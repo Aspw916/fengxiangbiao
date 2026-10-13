@@ -10,6 +10,7 @@ import { axisTime, axisU, BANDS, heatAt, matches, RANGE_H, type SkyEvent } from 
 import { FocusReel } from "./focus-reel";
 import { RefreshControl } from "./refresh-control";
 import { useLastVisit } from "./use-last-visit";
+import { DensityTrack } from "./density-track";
 import { relTime } from "@/lib/format";
 
 const PLAY_MS = 9000;
@@ -145,6 +146,7 @@ export function Sky({
     [events, lastVisit, initialIds],
   );
   const freshIds = useMemo(() => new Set(fresh.map((e) => e.id)), [fresh]);
+  const caption = playing ? inRange.reduce<SkyEvent | null>((acc, e) => (e.selected && e.first <= t && (!acc || e.first > acc.first) ? e : acc), null) : null;
   const maxHeat = Math.max(1, ...bodies.map((b) => b.heat));
   const diameter = (heat: number) => (8 + Math.sqrt(heat / maxHeat) * 46) * scale;
 
@@ -556,6 +558,13 @@ export function Sky({
 
         <div className="absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-bg via-bg/90 to-transparent px-4 pt-10 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto max-w-2xl">
+            <div className="pointer-events-none absolute inset-x-0 -top-1 overflow-hidden px-4 text-center text-xs text-dim" aria-live="polite">
+              {caption && (
+                <p key={caption.id} className="fade-in truncate">
+                  <span className="font-mono text-faint">{hm(caption.first)}</span> · {caption.title}
+                </p>
+              )}
+            </div>
             <div className="mb-3 flex items-center gap-3">
               <button
                 onClick={() => (playing ? setPlaying(false) : play())}
@@ -564,21 +573,24 @@ export function Sky({
               >
                 {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
               </button>
-              <input
-                type="range"
-                className="scrubber min-w-0 flex-1"
-                min={0}
-                max={SCRUB_STEPS}
-                step={1}
-                value={Math.round(axisU(t, now) * SCRUB_STEPS)}
-                onChange={(ev) => {
-                  setPlaying(false);
-                  const v = Number(ev.target.value);
-                  setT(v >= SCRUB_STEPS ? null : axisTime(v / SCRUB_STEPS, now));
-                }}
-                aria-label="时间"
-                aria-valuetext={stamp(t)}
-              />
+              <div className="relative min-w-0 flex-1">
+                <DensityTrack events={events} now={now} t={t} />
+                <input
+                  type="range"
+                  className="scrubber relative w-full"
+                  min={0}
+                  max={SCRUB_STEPS}
+                  step={1}
+                  value={Math.round(axisU(t, now) * SCRUB_STEPS)}
+                  onChange={(ev) => {
+                    setPlaying(false);
+                    const v = Number(ev.target.value);
+                    setT(v >= SCRUB_STEPS ? null : axisTime(v / SCRUB_STEPS, now));
+                  }}
+                  aria-label="时间"
+                  aria-valuetext={stamp(t)}
+                />
+              </div>
               <button
                 onClick={() => (setPlaying(false), setT(null), setView({ x: 0, y: 0, k: 1 }))}
                 className={cn("flex size-9 shrink-0 items-center justify-center rounded-full text-dim hover:text-fg", pinned === null && view.k === 1 && "invisible")}
