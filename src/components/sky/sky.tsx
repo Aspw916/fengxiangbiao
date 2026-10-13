@@ -19,7 +19,7 @@ const SCRUB_STEPS = 1000;
 const ENTER_MS = 900;
 const LINK_MAX = 6;
 const MAX_ZOOM = 4;
-const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；双击复位";
+const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；双击复位。键盘：← → 按时间、↑ ↓ 按热度切换事件，回车打开";
 
 function hm(t: number) {
   return new Date(t + 8 * 3600_000).toISOString().slice(11, 16);
@@ -259,13 +259,26 @@ export function Sky({
         ev.preventDefault();
         if (playing) setPlaying(false);
         else play();
-      } else if (ev.key === "Enter" && ranked[0]) {
-        openFocus(ranked[0].e.id);
+      } else if (ev.key === "Enter" && tag !== "BUTTON") {
+        const id = hovered ?? ranked[0]?.e.id;
+        if (id) openFocus(id);
+      } else if (ev.key.startsWith("Arrow") && ranked.length) {
+        ev.preventDefault();
+        const order = ev.key === "ArrowLeft" || ev.key === "ArrowRight" ? [...ranked].sort((a, b) => a.e.first - b.e.first) : ranked;
+        const step = ev.key === "ArrowRight" || ev.key === "ArrowDown" ? 1 : -1;
+        const at = order.findIndex((b) => b.e.id === hovered);
+        const next = order[at < 0 ? (step > 0 ? 0 : order.length - 1) : (at + step + order.length) % order.length];
+        document.querySelector<HTMLElement>(`[data-star="${next.e.id}"]`)?.focus({ preventScroll: true });
+        setHovered(next.e.id);
+        if (view.k > 1) setView((v) => ({ ...v, x: size.w / 2 - next.x * v.k, y: size.h / 2 - next.y * v.k }));
+      } else if (ev.key === "Escape") {
+        setHovered(null);
+        (document.activeElement as HTMLElement | null)?.blur();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [focusId, playing, play, ranked, openFocus]);
+  }, [focusId, playing, play, ranked, openFocus, hovered, view.k, size.w, size.h]);
 
   useEffect(() => {
     document.documentElement.style.overflow = "hidden";
@@ -520,6 +533,7 @@ export function Sky({
                   return (
                     <button
                       key={b.e.id}
+                      data-star={b.e.id}
                       type="button"
                       tabIndex={visible && star ? 0 : -1}
                       aria-hidden={!visible || !star}
