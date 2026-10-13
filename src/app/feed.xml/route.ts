@@ -5,9 +5,9 @@ function esc(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function GET(req: Request) {
+export async function GET(req: Request) {
   const origin = new URL(req.url).origin;
-  const store = getStore();
+  const store = await getStore();
   const entries = store.events
     .filter((e) => e.selected)
     .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))

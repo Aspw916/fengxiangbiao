@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { Edition, Store } from "@/engine/types";
-import { Kicker } from "@/components/story/marks";
+import { EmptyState, Eyebrow } from "@/components/story/marks";
 import { issueNo, shortDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 export function EditionView({ store, edition }: { store: Store; edition: Edition }) {
   const idx = store.editions.findIndex((e) => e.date === edition.date);
@@ -11,106 +12,94 @@ export function EditionView({ store, edition }: { store: Store; edition: Edition
   const offsets = edition.sections.map((_, i) => edition.sections.slice(0, i).reduce((sum, s) => sum + s.entries.length, 0));
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <header className="border-b-[3px] border-double border-ink pb-5 text-center">
-        <Kicker>晨报 · {issueNo(edition.no)}</Kicker>
-        <h1 className="mt-2 font-serif text-4xl font-black tracking-wide">{shortDate(edition.date)}</h1>
-        <p className="mt-3 text-sm text-ink-soft">
-          当日收稿 <b className="font-mono text-ink">{edition.stats.collected}</b> 篇，入选 <b className="font-mono text-ink">{edition.stats.selected}</b> 篇，编为{" "}
-          <b className="font-mono text-ink">{edition.stats.events}</b> 件事
+    <div className="mx-auto max-w-2xl">
+      <div className="-mx-5 mb-10 overflow-x-auto px-5 sm:mx-0 sm:px-0">
+        <ul className="flex min-w-max gap-1.5">
+          {store.editions.map((e) => (
+            <li key={e.date}>
+              <Link
+                href={`/edition/${e.date}`}
+                className={cn(
+                  "flex h-8 items-center rounded-full border px-3.5 text-sm transition-colors",
+                  e.date === edition.date ? "border-fg bg-fg text-bg" : "border-line text-dim hover:border-faint hover:text-fg",
+                )}
+              >
+                {shortDate(e.date)}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <header>
+        <Eyebrow>日报 · {issueNo(edition.no)}</Eyebrow>
+        <h1 className="mt-2 text-4xl font-semibold tracking-tight">{shortDate(edition.date)}</h1>
+        <p className="mt-3 text-[15px] text-dim">
+          收稿 {edition.stats.collected} 篇，入选 {edition.stats.selected} 篇，归成 {edition.stats.events} 件事
         </p>
       </header>
 
       {edition.lead && (
-        <section className="border-b border-rule py-8">
-          <p className="mb-2 font-serif text-sm font-bold text-vermilion">今日要闻</p>
-          <Link href={`/event/${edition.lead.eventId}`} data-nav className="group block outline-none focus-visible:bg-paper-deep">
-            <h2 className="font-serif text-2xl leading-snug font-black group-hover:text-vermilion sm:text-3xl">{edition.lead.title}</h2>
-            <p className="dropcap mt-3 leading-7">{edition.lead.summary}</p>
-          </Link>
-          <p className="mt-2 text-xs text-ink-soft">{edition.lead.sourceCount} 个来源报道</p>
-        </section>
+        <Link href={`/event/${edition.lead.eventId}`} data-nav className="mt-10 block rounded-3xl border border-line bg-surface p-6 outline-none hover:border-faint focus-visible:border-faint">
+          <p className="text-xs font-medium text-dim">今日要闻 · {edition.lead.sourceCount} 个来源</p>
+          <h2 className="mt-2 text-xl leading-snug font-semibold sm:text-2xl">{edition.lead.title}</h2>
+          <p className="mt-3 text-[15px] leading-7 text-dim">{edition.lead.summary}</p>
+        </Link>
       )}
 
       {edition.sections.map((s, si) => (
-        <section key={s.key} className="border-b border-rule py-6">
-          <h2 className="mb-4 flex items-center gap-3 font-serif text-sm font-bold tracking-[0.2em]">
-            <span className="h-px w-6 bg-ink" />
-            {s.title}
-          </h2>
-          <ol className="space-y-5">
-            {s.entries.map((e, ei) => {
-              const n = offsets[si] + ei + 1;
-              return (
-                <li key={e.eventId} className="grid grid-cols-[2rem_1fr] gap-2">
-                  <span className="font-mono text-sm text-ink-soft">{String(n).padStart(2, "0")}</span>
-                  <Link href={`/event/${e.eventId}`} data-nav className="group outline-none focus-visible:bg-paper-deep">
-                    <h3 className="font-serif text-lg leading-snug font-bold group-hover:text-vermilion">{e.title}</h3>
-                    <p className="mt-1 text-sm leading-6 text-ink-soft">{e.summary}</p>
-                  </Link>
-                </li>
-              );
-            })}
+        <section key={s.key} className="mt-12">
+          <h2 className="mb-2 text-sm font-medium text-faint">{s.title}</h2>
+          <ol className="divide-y divide-line">
+            {s.entries.map((e, ei) => (
+              <li key={e.eventId}>
+                <Link href={`/event/${e.eventId}`} data-nav className="-mx-3 grid grid-cols-[2rem_1fr] gap-2 rounded-2xl px-3 py-4 outline-none hover:bg-surface focus-visible:bg-surface">
+                  <span className="pt-0.5 font-mono text-xs text-faint tabular-nums">{String(offsets[si] + ei + 1).padStart(2, "0")}</span>
+                  <span>
+                    <span className="block text-[15px] leading-snug font-medium">{e.title}</span>
+                    <span className="mt-1 block text-sm leading-6 text-dim">{e.summary}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
           </ol>
         </section>
       ))}
 
       {edition.briefs.length > 0 && (
-        <section className="py-6">
-          <h2 className="mb-3 font-serif text-sm font-bold tracking-[0.2em]">简讯</h2>
-          <ul className="space-y-2 text-sm">
+        <section className="mt-12">
+          <h2 className="mb-2 text-sm font-medium text-faint">简讯</h2>
+          <ul className="space-y-2.5 text-sm">
             {edition.briefs.map((e) => (
-              <li key={e.eventId} className="flex gap-2">
-                <span className="text-vermilion">■</span>
-                <Link href={`/event/${e.eventId}`} className="hover:text-vermilion">{e.title}</Link>
+              <li key={e.eventId} className="flex gap-3">
+                <span className="mt-2.5 size-1 shrink-0 rounded-full bg-faint" />
+                <Link href={`/event/${e.eventId}`} className="leading-6 text-dim hover:text-fg">{e.title}</Link>
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      <nav className="mt-6 grid grid-cols-2 border-t-2 border-ink pt-4 text-sm" aria-label="翻阅往期">
+      <nav className="mt-14 grid grid-cols-2 gap-3 text-sm" aria-label="翻阅往期">
         {older ? (
-          <Link href={`/edition/${older.date}`} className="inline-flex items-center gap-1 hover:text-vermilion">
-            <ChevronLeft className="size-4" /> 上一期 · {shortDate(older.date)}
+          <Link href={`/edition/${older.date}`} className="flex items-center gap-1.5 rounded-2xl border border-line p-4 text-dim hover:border-faint hover:text-fg">
+            <ChevronLeft className="size-4" /> {shortDate(older.date)}
           </Link>
         ) : (
-          <span className="text-ink-soft">已是最早一期</span>
+          <span />
         )}
         {newer ? (
-          <Link href={`/edition/${newer.date}`} className="inline-flex items-center justify-end gap-1 hover:text-vermilion">
-            下一期 · {shortDate(newer.date)} <ChevronRight className="size-4" />
+          <Link href={`/edition/${newer.date}`} className="flex items-center justify-end gap-1.5 rounded-2xl border border-line p-4 text-dim hover:border-faint hover:text-fg">
+            {shortDate(newer.date)} <ChevronRight className="size-4" />
           </Link>
         ) : (
-          <span className="text-right text-ink-soft">已是最新一期</span>
+          <span />
         )}
       </nav>
-
-      <section className="mt-10">
-        <h2 className="mb-3 text-xs tracking-widest text-ink-soft">往期归档</h2>
-        <ul className="flex flex-wrap gap-2">
-          {store.editions.map((e) => (
-            <li key={e.date}>
-              <Link
-                href={`/edition/${e.date}`}
-                className={`block border px-3 py-1.5 text-xs ${e.date === edition.date ? "border-ink bg-ink text-paper" : "border-rule hover:border-ink"}`}
-              >
-                <span className="font-mono">{issueNo(e.no)}</span> · {shortDate(e.date)}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
     </div>
   );
 }
 
 export function EmptyEdition() {
-  return (
-    <div className="mx-auto max-w-lg py-16 text-center">
-      <Kicker>晨报</Kicker>
-      <h1 className="mt-3 font-serif text-3xl font-bold">还没有出过刊</h1>
-      <p className="mt-3 text-sm text-ink-soft">至少要有一条资料入选，才会编出第一期晨报。运行一次流水线后再来看看。</p>
-    </div>
-  );
+  return <EmptyState title="还没有日报">至少有一条资料入选后，才会生成第一期日报。</EmptyState>;
 }

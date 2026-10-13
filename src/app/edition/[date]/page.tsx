@@ -6,12 +6,12 @@ import { shortDate } from "@/lib/format";
 
 export async function generateMetadata({ params }: PageProps<"/edition/[date]">): Promise<Metadata> {
   const { date } = await params;
-  return { title: `晨报 · ${/^\d{4}-\d{2}-\d{2}$/.test(date) ? shortDate(date) : date}` };
+  return { title: `日报 · ${/^\d{4}-\d{2}-\d{2}$/.test(date) ? shortDate(date) : date}` };
 }
 
 export default async function EditionPage({ params }: PageProps<"/edition/[date]">) {
   const { date } = await params;
-  const store = getStore();
+  const store = await getStore();
   const edition = store.editions.find((e) => e.date === date);
   if (!edition) notFound();
   return <EditionView store={store} edition={edition} />;

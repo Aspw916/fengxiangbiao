@@ -1,6 +1,6 @@
 "use client";
 
-import { Scissors } from "lucide-react";
+import { Bookmark } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useClips, type Clip } from "@/lib/clips";
@@ -14,20 +14,19 @@ export function ClipButton({ clip, className, withLabel = false }: { clip: Omit<
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        const added = toggle(clip);
-        toast(added ? "已剪下，放进剪报夹" : "已从剪报夹移除");
+        toast(toggle(clip) ? "已收藏" : "已取消收藏");
       }}
       className={cn(
-        "inline-flex items-center gap-1 rounded-sm p-1 text-xs transition-colors",
-        on ? "text-vermilion" : "text-ink-soft hover:text-ink",
+        "inline-flex h-8 items-center gap-1.5 rounded-full text-sm transition-colors",
+        withLabel ? "border border-line px-3 hover:border-faint" : "w-8 justify-center hover:bg-raised",
+        on ? "text-fg" : "text-dim hover:text-fg",
         className,
       )}
       aria-pressed={on}
-      aria-label={on ? "从剪报夹移除" : "剪下这篇"}
-      title={on ? "从剪报夹移除" : "剪下这篇"}
+      aria-label={on ? "取消收藏" : "收藏"}
     >
-      <Scissors className={cn("size-3.5", on && "fill-current")} />
-      {withLabel && <span>{on ? "已剪下" : "剪下"}</span>}
+      <Bookmark className={cn("size-4", on && "fill-current")} strokeWidth={1.75} />
+      {withLabel && <span>{on ? "已收藏" : "收藏"}</span>}
     </button>
   );
 }

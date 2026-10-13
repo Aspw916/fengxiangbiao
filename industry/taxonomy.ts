@@ -6,7 +6,7 @@ export const SITE = {
   name: "风向标",
   enName: "AI Signal Daily",
   industry: "AI",
-  slogan: "把今天的 AI，排成一张版。",
+  slogan: "只看真正重要的 AI 动态。",
   editionHour: 8,
 } as const;
 

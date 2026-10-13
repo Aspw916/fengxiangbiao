@@ -46,7 +46,7 @@ function subscribe(l: () => void) {
 
 const EMPTY: Clip[] = [];
 
-/** 剪报只存在本机浏览器里，不上传。 */
+/** 收藏只存在本机浏览器里，不上传。 */
 export function useClips() {
   const clips = useSyncExternalStore(subscribe, read, () => EMPTY);
   const ready = useSyncExternalStore(subscribe, () => true, () => false);

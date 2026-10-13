@@ -19,7 +19,24 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-export function Masthead({ dateLine, issue, index }: { dateLine: string; issue: string; index: SearchEntry[] }) {
+/** 全站共享的搜索面板开关：首页的大搜索框和顶栏按钮都打开同一个面板。 */
+export function openSearch() {
+  window.dispatchEvent(new Event("fxb:search"));
+}
+
+function Logo() {
+  return (
+    <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
+      <svg viewBox="0 0 24 24" className="size-5" aria-hidden>
+        <path d="M4 20 L12 4 L20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="12" cy="15" r="1.8" fill="currentColor" />
+      </svg>
+      风向标
+    </Link>
+  );
+}
+
+export function Header({ index, demo }: { index: SearchEntry[]; demo: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -37,29 +54,57 @@ export function Masthead({ dateLine, issue, index }: { dateLine: string; issue: 
         setOpen(true);
       }
     };
+    const onOpen = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("fxb:search", onOpen);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("fxb:search", onOpen);
+    };
   }, []);
 
+  const go = (href: string) => {
+    setOpen(false);
+    router.push(href);
+  };
+
   return (
-    <header className="border-b border-rule bg-paper">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-2 text-xs text-ink-soft sm:px-6">
-        <span className="font-mono">{dateLine}</span>
-        <div className="flex items-center gap-1">
+    <header className="sticky top-0 z-40 border-b border-line bg-bg/80 backdrop-blur-xl">
+      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-5 sm:px-8">
+        <div className="flex items-center gap-3">
+          <Logo />
+          {demo && <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-faint" title="当前为虚构的示范内容，运行流水线后显示真实资讯">示范数据</span>}
+        </div>
+
+        <nav className="hidden items-center gap-1 md:flex" aria-label="主导航">
+          {NAV.map((n) => (
+            <Link
+              key={n.href}
+              href={n.href}
+              className={cn(
+                "rounded-full px-3.5 py-1.5 text-sm transition-colors",
+                isActive(pathname, n.href) ? "bg-raised text-fg" : "text-dim hover:text-fg",
+              )}
+            >
+              {n.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="flex items-center gap-1.5">
           <button
             onClick={() => setOpen(true)}
-            className="flex items-center gap-2 rounded-sm border border-rule px-2 py-1 hover:border-ink hover:text-ink"
-            aria-label="搜索稿件"
+            className="flex h-8 items-center gap-2 rounded-full border border-line px-3 text-sm text-dim transition-colors hover:border-faint hover:text-fg"
+            aria-label="搜索事件"
           >
             <Search className="size-3.5" />
-            <span className="hidden sm:inline">查找稿件</span>
-            <kbd className="hidden font-mono text-[10px] sm:inline">⌘K</kbd>
+            <span className="hidden lg:inline">搜索</span>
+            <kbd className="hidden font-mono text-[11px] text-faint lg:inline">⌘K</kbd>
           </button>
           <button
             onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-            className="rounded-sm p-1.5 hover:text-ink"
-            aria-label="切换日刊与夜刊"
-            title="日刊 / 夜刊"
+            className="flex size-8 items-center justify-center rounded-full text-dim transition-colors hover:bg-raised hover:text-fg"
+            aria-label="切换深浅色"
           >
             <Sun className="hidden size-4 dark:block" />
             <Moon className="size-4 dark:hidden" />
@@ -67,63 +112,28 @@ export function Masthead({ dateLine, issue, index }: { dateLine: string; issue: 
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <Link href="/" className="block border-y-2 border-ink py-3 text-center sm:py-5">
-          <span className="font-serif text-4xl font-black tracking-[0.3em] sm:text-6xl">风向标</span>
-          <span className="mt-1 block font-mono text-[10px] tracking-[0.4em] text-ink-soft uppercase sm:text-xs">
-            AI Signal Daily · {issue}
-          </span>
-        </Link>
-        <nav className="hidden items-center justify-between border-b border-rule py-2 md:flex" aria-label="版面">
-          <ul className="flex gap-6">
-            {NAV.map((n) => (
-              <li key={n.href}>
-                <Link
-                  href={n.href}
-                  className={cn(
-                    "font-serif text-[15px] tracking-wide hover:text-vermilion",
-                    isActive(pathname, n.href) && "text-vermilion underline decoration-2 underline-offset-[10px]",
-                  )}
-                >
-                  {n.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <ul className="flex gap-4 text-xs text-ink-soft">
-            {SECONDARY_NAV.map((n) => (
-              <li key={n.href}>
-                <Link href={n.href} className={cn("hover:text-ink", isActive(pathname, n.href) && "text-ink")}>
-                  {n.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </div>
-
-      <CommandDialog open={open} onOpenChange={setOpen} title="查找稿件" description="按标题搜索事件">
+      <CommandDialog open={open} onOpenChange={setOpen} title="搜索" description="按标题搜索事件">
         <Command>
-        <CommandInput placeholder="输入关键词，例如：开源、智能体、监管…" />
-        <CommandList>
-          <CommandEmpty>没有找到相关稿件，换个词试试。</CommandEmpty>
-          <CommandGroup heading="版面">
-            {[...NAV, ...SECONDARY_NAV.map((n) => ({ ...n, hint: "" }))].map((n) => (
-              <CommandItem key={n.href} value={`版面 ${n.label}`} onSelect={() => (setOpen(false), router.push(n.href))}>
-                {n.label}
-                <span className="ml-auto text-xs text-muted-foreground">{n.hint}</span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-          <CommandGroup heading="事件">
-            {index.map((e) => (
-              <CommandItem key={e.id} value={`${e.title} ${e.id}`} onSelect={() => (setOpen(false), router.push(`/event/${e.id}`))}>
-                <span className="line-clamp-1">{e.title}</span>
-                <span className="ml-auto shrink-0 text-xs text-muted-foreground">{e.meta}</span>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        </CommandList>
+          <CommandInput placeholder="搜索事件，例如：开源、智能体、监管…" />
+          <CommandList>
+            <CommandEmpty>没有找到相关事件。</CommandEmpty>
+            <CommandGroup heading="页面">
+              {[...NAV, ...SECONDARY_NAV].map((n) => (
+                <CommandItem key={n.href} value={`页面 ${n.label} ${n.hint}`} onSelect={() => go(n.href)}>
+                  {n.label}
+                  <span className="ml-auto text-xs text-muted-foreground">{n.hint}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            <CommandGroup heading="事件">
+              {index.map((e) => (
+                <CommandItem key={e.id} value={`${e.title} ${e.id}`} onSelect={() => go(`/event/${e.id}`)}>
+                  <span className="line-clamp-1">{e.title}</span>
+                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">{e.meta}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
         </Command>
       </CommandDialog>
     </header>
@@ -133,15 +143,12 @@ export function Masthead({ dateLine, issue, index }: { dateLine: string; issue: 
 export function MobileTabBar() {
   const pathname = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t-2 border-ink bg-paper pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="版面">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden" aria-label="主导航">
       <ul className="grid grid-cols-5">
         {NAV.map(({ href, label, icon: Icon }) => (
           <li key={href}>
-            <Link
-              href={href}
-              className={cn("flex flex-col items-center gap-0.5 py-2 text-[11px]", isActive(pathname, href) ? "text-vermilion" : "text-ink-soft")}
-            >
-              <Icon className="size-5" strokeWidth={1.6} />
+            <Link href={href} className={cn("flex flex-col items-center gap-1 py-2.5 text-[11px]", isActive(pathname, href) ? "text-fg" : "text-faint")}>
+              <Icon className="size-5" strokeWidth={1.75} />
               {label}
             </Link>
           </li>
@@ -151,7 +158,7 @@ export function MobileTabBar() {
   );
 }
 
-/** J / K 在带 data-nav 的稿件之间移动，Enter 打开。 */
+/** J / K 在带 data-nav 的条目之间移动焦点，Enter 打开。 */
 export function KeyboardNav() {
   const pathname = usePathname();
   useEffect(() => {
@@ -160,12 +167,10 @@ export function KeyboardNav() {
       const target = e.target as HTMLElement;
       if (["INPUT", "TEXTAREA"].includes(target.tagName) || e.metaKey || e.ctrlKey) return;
       const items = [...document.querySelectorAll<HTMLElement>("[data-nav]")];
-      if (!items.length) return;
-      if (e.key === "j" || e.key === "k") {
-        index = Math.max(0, Math.min(items.length - 1, index + (e.key === "j" ? 1 : -1)));
-        items[index].focus();
-        items[index].scrollIntoView({ block: "center", behavior: "smooth" });
-      }
+      if (!items.length || (e.key !== "j" && e.key !== "k")) return;
+      index = Math.max(0, Math.min(items.length - 1, index + (e.key === "j" ? 1 : -1)));
+      items[index].focus();
+      items[index].scrollIntoView({ block: "center", behavior: "smooth" });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

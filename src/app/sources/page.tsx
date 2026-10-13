@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import { getStore } from "@/engine/store";
-import { Kicker } from "@/components/story/marks";
+import { PageHeader } from "@/components/story/marks";
 import { relTime } from "@/lib/format";
 import { SELECTION } from "../../../industry/selection";
 
-export const metadata: Metadata = { title: "信源台" };
+export const metadata: Metadata = { title: "信源" };
 
-export default function SourcesPage() {
-  const store = getStore();
+export default async function SourcesPage() {
+  const store = await getStore();
   const rows = store.sources
     .map((s) => {
       const items = store.items.filter((i) => i.sourceId === s.id);
@@ -18,48 +18,40 @@ export default function SourcesPage() {
 
   return (
     <>
-      <header className="mb-8">
-        <Kicker>信源台</Kicker>
-        <h1 className="mt-1 font-serif text-3xl font-black">本刊的 {store.sources.length} 条供稿线</h1>
-        <p className="mt-2 max-w-2xl text-sm text-ink-soft">
-          信源分两级：一手信源（官方博客、研究机构）门槛 {SELECTION.thresholds.T1} 分；媒体与个人门槛 {SELECTION.thresholds.T2} 分。名单在
-          <code className="mx-1 font-mono text-ink">industry/sources.json</code>，换行业时替换它即可。
-        </p>
-      </header>
-
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[40rem] border-t-2 border-ink text-sm">
+      <PageHeader eyebrow="信源" title={`${store.sources.length} 个信源`}>
+        一手信源（官方博客、研究机构）入选线 {SELECTION.thresholds.T1} 分，媒体与个人 {SELECTION.thresholds.T2} 分。名单在 <code className="font-mono text-fg">industry/sources.json</code>。
+      </PageHeader>
+      <div className="overflow-x-auto rounded-2xl border border-line">
+        <table className="w-full min-w-[38rem] text-sm">
           <thead>
-            <tr className="border-b border-rule text-left text-xs text-ink-soft">
-              <th className="py-2 font-normal">信源</th>
-              <th className="py-2 font-normal">分级</th>
-              <th className="py-2 text-right font-normal">收稿</th>
-              <th className="py-2 text-right font-normal">入选</th>
-              <th className="w-40 py-2 pl-6 font-normal">入选率</th>
-              <th className="py-2 text-right font-normal">最近来稿</th>
+            <tr className="border-b border-line text-left text-xs text-faint">
+              <th className="px-4 py-3 font-normal">信源</th>
+              <th className="px-4 py-3 font-normal">类型</th>
+              <th className="px-4 py-3 text-right font-normal">收稿</th>
+              <th className="px-4 py-3 text-right font-normal">入选</th>
+              <th className="w-40 px-4 py-3 font-normal">入选率</th>
+              <th className="px-4 py-3 text-right font-normal">最近</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-line">
             {rows.map(({ s, total, picked, rate, last }) => (
-              <tr key={s.id} className="border-b border-rule">
-                <td className="py-3">
-                  <a href={s.homepage} target="_blank" rel="noreferrer" className="font-serif font-bold hover:text-vermilion">{s.name}</a>
-                  <span className="block font-mono text-[11px] text-ink-soft">{new URL(s.feedUrl).host}</span>
+              <tr key={s.id} className="hover:bg-surface">
+                <td className="px-4 py-3">
+                  <a href={s.homepage} target="_blank" rel="noreferrer" className="font-medium hover:opacity-80">{s.name}</a>
+                  <span className="block font-mono text-[11px] text-faint">{new URL(s.feedUrl).host}</span>
                 </td>
-                <td className="py-3">
-                  <span className={s.tier === "T1" ? "text-verdigris" : "text-ink-soft"}>{s.tier === "T1" ? "一手" : "媒体"}</span>
-                </td>
-                <td className="py-3 text-right font-mono">{total}</td>
-                <td className="py-3 text-right font-mono">{picked}</td>
-                <td className="py-3 pl-6">
+                <td className="px-4 py-3 text-dim">{s.tier === "T1" ? "一手" : "媒体"}</td>
+                <td className="px-4 py-3 text-right font-mono tabular-nums text-dim">{total}</td>
+                <td className="px-4 py-3 text-right font-mono tabular-nums">{picked}</td>
+                <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <div className="h-1 flex-1 bg-paper-deep">
-                      <div className="h-full bg-ink" style={{ width: `${Math.round(rate * 100)}%` }} />
+                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-raised">
+                      <div className="h-full rounded-full bg-fg" style={{ width: `${Math.round(rate * 100)}%` }} />
                     </div>
-                    <span className="w-9 text-right font-mono text-xs">{Math.round(rate * 100)}%</span>
+                    <span className="w-9 text-right font-mono text-xs tabular-nums text-dim">{Math.round(rate * 100)}%</span>
                   </div>
                 </td>
-                <td className="py-3 text-right text-xs text-ink-soft">{last ? relTime(last) : "暂无来稿"}</td>
+                <td className="px-4 py-3 text-right text-xs text-faint">{last ? relTime(last) : "—"}</td>
               </tr>
             ))}
           </tbody>
