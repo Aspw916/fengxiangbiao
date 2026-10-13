@@ -17,6 +17,8 @@ export function loadPrompt(name: "score" | "write"): string {
 /** 调用 OpenAI 兼容接口，返回解析后的 JSON。只在流水线里调用，页面从不调用。 */
 export async function chatJson<T>(system: string, user: string): Promise<T> {
   const base = process.env.LLM_BASE_URL ?? "https://api.deepseek.com/v1";
+  // 经 OpenRouter 时：关掉思考（打分只要一个数，思考 token 会让成本翻几倍），并路由到最便宜的服务商。
+  const openRouter = base.includes("openrouter.ai") ? { reasoning: { enabled: false }, provider: { sort: "price" } } : {};
   const res = await fetch(`${base.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${process.env.LLM_API_KEY}` },
@@ -24,6 +26,7 @@ export async function chatJson<T>(system: string, user: string): Promise<T> {
       model: process.env.LLM_MODEL ?? "deepseek-chat",
       temperature: 0.4,
       response_format: { type: "json_object" },
+      ...openRouter,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },

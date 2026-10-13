@@ -65,7 +65,7 @@ Vercel 运行时文件系统只读，所以线上不会写本地文件：没连 
 | `CRON_SECRET` | 线上必需 | Cron 路由的鉴权；Vercel Cron 会自动带上 `Authorization: Bearer $CRON_SECRET` |
 | `LLM_API_KEY` | 可选 | 任意 OpenAI 兼容接口的密钥；不填时用启发式评分、保留原文标题 |
 | `LLM_BASE_URL` | 可选 | 默认 `https://api.deepseek.com/v1` |
-| `LLM_MODEL` | 可选 | 默认 `deepseek-chat` |
+| `LLM_MODEL` | 可选 | 默认 `deepseek-chat`；线上经 OpenRouter 使用 `~deepseek/deepseek-flash-latest`（经 OpenRouter 时会自动关闭思考、选最便宜的服务商） |
 | `PIPELINE_MAX_NEW` | 可选 | 每次最多处理多少条新资料，默认 40（控制单次运行时长与模型费用） |
 | `STORE_BLOB_PATH` | 可选 | Blob 中的文件路径，默认 `fengxiangbiao/store.json` |
 | `STORE_BLOB_ACCESS` | 可选 | `private`（默认）或 `public`，需与 Blob 存储的访问类型一致 |

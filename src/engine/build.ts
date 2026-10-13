@@ -50,7 +50,7 @@ function toEditions(events: StoryEvent[], items: Item[], sources: Source[]): Edi
     .map(([date, list]) => {
       const ranked = [...list].sort((a, b) => b.score * b.sourceIds.length - a.score * a.sourceIds.length);
       const [lead, ...rest] = ranked;
-      const briefs = rest.filter((e) => e.sourceIds.length === 1 && e.score < 75);
+      const briefs = rest.filter((e) => e.sourceIds.length === 1 && e.score < 60);
       const main = rest.filter((e) => !briefs.includes(e));
       const sections = [...new Set(CATEGORIES.map((c) => c.section))]
         .map((title) => {

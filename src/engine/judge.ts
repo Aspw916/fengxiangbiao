@@ -8,7 +8,7 @@ import { hash } from "./text";
 /** 没有模型时的兜底评分：信源分级 + 份量词 + 正文长度，两次评分用不同扰动模拟独立判断。 */
 function heuristicScore(entry: RawEntry, tier: string, pass: number): number {
   const text = `${entry.title} ${entry.snippet}`.toLowerCase();
-  let s = tier === "T1" ? 60 : 58;
+  let s = tier === "T1" ? 45 : 46;
   for (const term of WEIGHT_TERMS) if (text.includes(term)) s += 5;
   s += Math.min(10, entry.snippet.length / 120);
   const jitter = (parseInt(hash(entry.id + pass), 36) % 11) - 5;
