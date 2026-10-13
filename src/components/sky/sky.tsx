@@ -6,13 +6,13 @@ import { useTheme } from "next-themes";
 import Link from "next/link";
 import { Minus, Pause, Play, Plus, RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { BANDS, heatAt, matches, type SkyEvent } from "@/lib/sky";
+import { axisTime, axisU, BANDS, heatAt, matches, RANGE_H, type SkyEvent } from "@/lib/sky";
 import { FocusReel } from "./focus-reel";
 import { RefreshControl } from "./refresh-control";
 
-const RANGE_H = 72;
 const PLAY_MS = 9000;
 const CLOCK_MS = 15_000;
+const SCRUB_STEPS = 1000;
 const MAX_ZOOM = 4;
 const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；双击复位";
 
@@ -110,7 +110,7 @@ export function Sky({
 
   const bodies = useMemo(() => {
     return inRange.map((e) => {
-      const u = Math.max(0, Math.min(1, (e.first - start) / (now - start)));
+      const u = axisU(e.first, now);
       const v = (e.band + 0.5 + (hash01(e.id) - 0.5) * 0.7) / BANDS.length;
       const [nx, ny] = portrait ? [v, u] : [u, v];
       const x = pad.l + nx * areaW;
@@ -119,7 +119,7 @@ export function Sky({
       const official = e.reports.some((r) => r.tier === "T1");
       return { e, x, y, heat, lit: e.first <= t, official };
     });
-  }, [inRange, start, now, portrait, t, pad.l, pad.t, areaW, areaH]);
+  }, [inRange, now, portrait, t, pad.l, pad.t, areaW, areaH]);
 
   const isVisible = useCallback(
     (b: (typeof bodies)[number]) => b.lit && (b.e.selected || showDust) && (!officialOnly || b.official),
@@ -167,13 +167,13 @@ export function Sky({
     window.history.replaceState(null, "", url);
   }, []);
 
-  const [playSpan, setPlaySpan] = useState({ from: 0, to: 0 });
+  const [playEnd, setPlayEnd] = useState(0);
   const play = useCallback(() => {
     if (reduced) {
       setT(null);
       return;
     }
-    setPlaySpan({ from: start, to: now });
+    setPlayEnd(now);
     setPlaying(true);
     setT(start);
   }, [reduced, now, start, setT]);
@@ -182,11 +182,10 @@ export function Sky({
     if (!playing) return;
     let raf = 0;
     const begin = performance.now();
-    const { from, to } = playSpan;
-    const tick = (ts: number) => {
+        const tick = (ts: number) => {
       const p = Math.min(1, (ts - begin) / PLAY_MS);
       if (p < 1) {
-        setT(from + (to - from) * p);
+        setT(axisTime(p, playEnd));
         raf = requestAnimationFrame(tick);
       } else {
         setT(null);
@@ -195,7 +194,7 @@ export function Sky({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, playSpan, setT]);
+  }, [playing, playEnd, setT]);
 
   const commands: Command[] = [
     { cmd: "/回放", hint: "重演最近 72 小时", run: play },
@@ -325,7 +324,7 @@ export function Sky({
   const focusIndex = focusId ? Math.max(0, focusOrder.findIndex((e) => e.id === focusId)) : 0;
   const hoveredBody = bodies.find((b) => b.e.id === hovered);
   const hoursAgo = Math.round((now - t) / 3600_000);
-  const ticks = [72, 48, 24, 0];
+  const ticks = compact ? [72, 24, 6, 0] : [72, 48, 24, 12, 6, 0];
 
   return (
     <>
@@ -419,7 +418,7 @@ export function Sky({
           <div className="absolute inset-0 origin-top-left" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
             {size.w > 0 &&
               ticks.map((h) => {
-                const u = 1 - h / RANGE_H;
+                const u = axisU(now - h * 3600_000, now);
                 const pos = portrait ? pad.t + u * areaH : pad.l + u * areaW;
                 return (
                   <div key={h} aria-hidden className={cn("absolute bg-line/60", portrait ? "h-px" : "w-px")} style={portrait ? { top: pos, left: pad.l - 12, right: pad.r - 12 } : { left: pos, top: pad.t - 24, bottom: pad.b - 24 }}>
@@ -543,14 +542,14 @@ export function Sky({
               <input
                 type="range"
                 className="scrubber min-w-0 flex-1"
-                min={start}
-                max={now}
-                step={60_000}
-                value={t}
+                min={0}
+                max={SCRUB_STEPS}
+                step={1}
+                value={Math.round(axisU(t, now) * SCRUB_STEPS)}
                 onChange={(ev) => {
                   setPlaying(false);
                   const v = Number(ev.target.value);
-                  setT(v >= now - 60_000 ? null : v);
+                  setT(v >= SCRUB_STEPS ? null : axisTime(v / SCRUB_STEPS, now));
                 }}
                 aria-label="时间"
                 aria-valuetext={stamp(t)}

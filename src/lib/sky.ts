@@ -28,6 +28,20 @@ export interface SkyEvent {
   reports: SkyReport[];
 }
 
+export const RANGE_H = 72;
+const RANGE_MS = RANGE_H * 3600_000;
+
+/** 时间 → 时间轴位置（0 为 72 小时前，1 为现在）。按平方根拉伸，越靠近现在越宽。 */
+export function axisU(time: number, now: number): number {
+  const age = Math.max(0, Math.min(1, (now - time) / RANGE_MS));
+  return 1 - Math.sqrt(age);
+}
+
+export function axisTime(u: number, now: number): number {
+  const age = (1 - Math.max(0, Math.min(1, u))) ** 2;
+  return now - age * RANGE_MS;
+}
+
 export const HEAT_PARAMS = { windowH: HEAT.windowHours, halfLifeH: HEAT.halfLifeHours, t1: HEAT.tierWeight.T1 ?? 1 };
 export const BANDS = CATEGORIES.map((c) => ({ key: c.key, label: c.label }));
 
