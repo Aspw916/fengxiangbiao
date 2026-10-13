@@ -19,7 +19,8 @@ const PLAY_MS = 9000;
 const CLOCK_MS = 15_000;
 const SCRUB_STEPS = 1000;
 const ENTER_MS = 900;
-const LINK_MAX = 6;
+const LINK_SHARED_MAX = 3;
+const LINK_TOPIC_MAX = 2;
 const MINIMAP_AT = 1.5;
 const MAX_ZOOM = 4;
 const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；双击复位。键盘：← → 按时间、↑ ↓ 按热度切换事件，回车打开";
@@ -116,7 +117,7 @@ export function Sky({
 
   const portrait = size.h > size.w * 1.1;
   const compact = size.w < 720;
-  const pad = portrait ? { l: 36, r: 28, t: 132, b: 200 } : { l: compact ? 64 : 104, r: compact ? 40 : 150, t: 132, b: 176 };
+  const pad = portrait ? { l: 36, r: 28, t: 168, b: 200 } : { l: compact ? 64 : 104, r: compact ? 40 : 150, t: 172, b: 176 };
   const areaW = Math.max(0, size.w - pad.l - pad.r);
   const areaH = Math.max(0, size.h - pad.t - pad.b);
   const scale = compact ? 0.62 : 1;
@@ -366,11 +367,16 @@ export function Sky({
     if (!hoveredBody?.e.selected) return [];
     const mine = new Set(hoveredBody.e.reports.map((r) => r.source));
     const others = bodies.filter((b) => b !== hoveredBody && b.e.selected && isVisible(b));
-    const shared = others.filter((b) => b.e.reports.some((r) => mine.has(r.source))).slice(0, LINK_MAX);
+    const near = (a: (typeof others)[number], b: (typeof others)[number]) => Math.abs(a.e.first - hoveredBody.e.first) - Math.abs(b.e.first - hoveredBody.e.first);
+    const overlap = (b: (typeof others)[number]) => new Set(b.e.reports.map((r) => r.source).filter((x) => mine.has(x))).size;
+    const shared = others
+      .filter((b) => overlap(b) > 0)
+      .sort((a, b) => overlap(b) - overlap(a) || near(a, b))
+      .slice(0, LINK_SHARED_MAX);
     const sameTopic = others
       .filter((b) => b.e.category === hoveredBody.e.category && !shared.includes(b))
-      .sort((a, b) => Math.abs(a.e.first - hoveredBody.e.first) - Math.abs(b.e.first - hoveredBody.e.first))
-      .slice(0, Math.max(0, LINK_MAX - shared.length));
+      .sort(near)
+      .slice(0, LINK_TOPIC_MAX);
     return [...shared.map((b) => ({ b, strong: true })), ...sameTopic.map((b) => ({ b, strong: false }))];
   }, [hoveredBody, bodies, isVisible]);
   const hoursAgo = Math.round((now - t) / 3600_000);
@@ -531,7 +537,7 @@ export function Sky({
                     y1={hoveredBody.y}
                     x2={b.x}
                     y2={b.y}
-                    className={cn("link-draw stroke-fg", strong ? "opacity-40" : "opacity-20")}
+                    className={cn("link-draw stroke-fg", strong ? "opacity-30" : "opacity-20")}
                     strokeWidth={1}
                     strokeDasharray={strong ? undefined : "3 4"}
                     vectorEffect="non-scaling-stroke"
