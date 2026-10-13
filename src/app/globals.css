@@ -194,6 +194,12 @@
 @keyframes star-enter {
   from { opacity: 0; scale: 0.2; }
 }
+.sheet-up {
+  animation: sheet-up 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+@keyframes sheet-up {
+  from { opacity: 0; transform: translateY(24px); }
+}
 .link-draw {
   animation: link-in 0.3s ease-out backwards;
 }
@@ -240,6 +246,6 @@
     transform: translate(-50%, -50%) scale(1);
   }
   .ignite-row, .slide-in-right, .slide-in-left, .fade-in { transform: none; }
-  .star-pulse::after, .star-new::before, .star-enter { animation: none; }
+  .star-pulse::after, .star-new::before, .star-enter, .sheet-up, .link-draw { animation: none; }
   .star { transition: none; }
 }

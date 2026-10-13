@@ -12,6 +12,7 @@ import { RefreshControl } from "./refresh-control";
 import { useLastVisit } from "./use-last-visit";
 import { DensityTrack } from "./density-track";
 import { Minimap } from "./minimap";
+import { StarSheet } from "./star-sheet";
 import { relTime } from "@/lib/format";
 
 const PLAY_MS = 9000;
@@ -110,7 +111,7 @@ export function Sky({
   const [focusId, setFocusId] = useState<string | null>(initialFocus ?? null);
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const pointerType = useRef("mouse");
-  const [armed, setArmed] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
 
   const portrait = size.h > size.w * 1.1;
@@ -483,6 +484,12 @@ export function Sky({
           onPointerLeave={(ev) => {
             if (ev.pointerType !== "touch") drag.current = null;
           }}
+          onClick={(ev) => {
+            if (sheet && !drag.current?.moved && !(ev.target as HTMLElement).closest("[data-star]")) {
+              setSheet(null);
+              setHovered(null);
+            }
+          }}
           aria-label="事件星场"
           role="group"
         >
@@ -558,8 +565,8 @@ export function Sky({
                       onPointerDown={(ev) => (pointerType.current = ev.pointerType)}
                       onClick={() => {
                         if (drag.current?.moved || !star) return;
-                        if (pointerType.current === "touch" && armed !== b.e.id) {
-                          setArmed(b.e.id);
+                        if (pointerType.current === "touch") {
+                          setSheet(b.e.id);
                           setHovered(b.e.id);
                           return;
                         }
@@ -593,7 +600,7 @@ export function Sky({
                 ))}
           </div>
 
-          {hoveredBody && isVisible(hoveredBody) && hoveredBody.e.selected && (
+          {!sheet && hoveredBody && isVisible(hoveredBody) && hoveredBody.e.selected && (
             <div
               className="pointer-events-none absolute z-20 w-64 rounded-2xl border border-line bg-surface/95 p-3 shadow-2xl backdrop-blur"
               style={{
@@ -742,6 +749,13 @@ export function Sky({
         </div>
 
       </div>
+
+        {sheet && !focusId && (() => {
+          const b = bodies.find((x) => x.e.id === sheet);
+          if (!b) return null;
+          const close = () => (setSheet(null), setHovered(null));
+          return <StarSheet e={b.e} heat={b.heat} onClose={close} onOpen={() => (close(), openFocus(b.e.id))} />;
+        })()}
 
         {focusId && focusSlides.length > 0 && (
           <FocusReel
