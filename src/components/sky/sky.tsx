@@ -620,12 +620,12 @@ export function Sky({
               className="absolute z-20 w-64 rounded-2xl border border-line bg-surface/95 p-3 shadow-2xl backdrop-blur"
               style={{
                 left: Math.min(size.w - 272, Math.max(8, hoveredBody.x * view.k + view.x + 18)),
-                top: Math.min(size.h - 200, Math.max(8, hoveredBody.y * view.k + view.y - 20)),
+                top: Math.min(size.h - 340, Math.max(8, hoveredBody.y * view.k + view.y - 20)),
               }}
             >
               <div className="text-[11px] text-faint">
                 {hoveredBody.e.categoryLabel} · {hoveredBody.e.sourceCount} 个来源 ·{" "}
-                <ScoreBadge score={hoveredBody.e.score} official={hoveredBody.official} selected={hoveredBody.e.selected} />
+                <ScoreBadge score={hoveredBody.e.score} official={hoveredBody.official} selected={hoveredBody.e.selected} embed />
               </div>
               <p className="mt-1 text-sm leading-snug font-medium">{hoveredBody.e.title}</p>
               <p className="mt-2 text-[11px] text-faint">
