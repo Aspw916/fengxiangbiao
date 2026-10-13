@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import Link from "next/link";
 import { Toaster } from "@/components/ui/sonner";
-import { KeyboardNav, Header, MobileTabBar } from "@/components/site/chrome";
+import { KeyboardNav, Header } from "@/components/site/chrome";
 import { getStore } from "@/engine/store";
 import { categoryLabel, SITE } from "../../industry/taxonomy";
 import "./globals.css";
@@ -37,7 +37,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
           <Header index={index} demo={store.mode === "demo"} />
-          <main className="mx-auto w-full max-w-5xl flex-1 px-5 pt-10 pb-28 sm:px-8 md:pb-16">{children}</main>
+          <main className="mx-auto w-full max-w-5xl flex-1 px-5 pt-10 pb-20 sm:px-8 md:pb-16">{children}</main>
           <footer className="hidden border-t border-line md:block">
             <div className="mx-auto flex max-w-5xl items-center justify-between px-8 py-6 text-xs text-faint">
               <span>{SITE.name} · {SITE.slogan}</span>
@@ -49,7 +49,6 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               </span>
             </div>
           </footer>
-          <MobileTabBar />
           <KeyboardNav />
           <Toaster position="bottom-center" />
         </ThemeProvider>

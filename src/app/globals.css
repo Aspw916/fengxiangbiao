@@ -123,3 +123,94 @@
 @keyframes shimmer {
   to { background-position: -200% 0; }
 }
+
+@layer components {
+  .ignite {
+    transform: translate(-50%, -50%) scale(0);
+    animation: ignite 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.4) forwards;
+  }
+  .ignite-row {
+    opacity: 0;
+    animation: fade-in 0.4s ease-out forwards;
+  }
+  .slide-in-right {
+    animation: slide-in-right 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .slide-in-left {
+    animation: slide-in-left 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .star {
+    transition:
+      width 0.5s ease,
+      height 0.5s ease,
+      opacity 0.4s ease,
+      box-shadow 0.5s ease;
+  }
+  .star-pulse::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: 9999px;
+    border: 1px solid var(--fg);
+    opacity: 0;
+    animation: pulse-ring 2.4s ease-out infinite;
+  }
+  .scrubber {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    height: 28px;
+  }
+  .scrubber::-webkit-slider-runnable-track {
+    height: 2px;
+    background: var(--line);
+    border-radius: 9999px;
+  }
+  .scrubber::-moz-range-track {
+    height: 2px;
+    background: var(--line);
+  }
+  .scrubber::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -6px;
+    border-radius: 9999px;
+    background: var(--fg);
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--fg) 15%, transparent);
+  }
+  .scrubber::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: 0;
+    border-radius: 9999px;
+    background: var(--fg);
+  }
+}
+
+@keyframes ignite {
+  to { transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(32px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-32px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pulse-ring {
+  0% { opacity: 0.5; transform: scale(0.8); }
+  100% { opacity: 0; transform: scale(1.8); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ignite, .ignite-row, .slide-in-right, .slide-in-left, .fade-in {
+    animation: none;
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  .ignite-row, .slide-in-right, .slide-in-left, .fade-in { transform: none; }
+  .star-pulse::after { animation: none; }
+  .star { transition: none; }
+}

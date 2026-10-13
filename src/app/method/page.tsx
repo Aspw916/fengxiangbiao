@@ -19,7 +19,7 @@ export default async function MethodPage() {
   return (
     <div className="mx-auto max-w-2xl">
       <PageHeader eyebrow="方法" title="少一点信息，多一点判断">
-        每篇资料都要经过五步，走到最后的才会出现在首页。全部规则写在 <code className="font-mono text-fg">industry/</code> 目录里，改规则不用改代码。
+        每篇资料都要经过五步，走到最后的才会在星场里发光。全部规则写在 <code className="font-mono text-fg">industry/</code> 目录里，改规则不用改代码。
       </PageHeader>
 
       <ol className="space-y-2">

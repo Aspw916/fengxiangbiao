@@ -1,12 +1,13 @@
 export default function Loading() {
   return (
-    <div className="mx-auto max-w-3xl space-y-4 pt-6" aria-busy="true" aria-label="加载中">
-      <div className="skeleton mx-auto h-10 w-2/3 rounded-xl" />
-      <div className="skeleton mx-auto h-14 w-full max-w-xl rounded-full" />
-      <div className="skeleton mt-10 h-48 w-full rounded-3xl" />
-      {Array.from({ length: 4 }, (_, i) => (
-        <div key={i} className="skeleton h-16 w-full rounded-2xl" />
-      ))}
+    <div className="fixed inset-x-0 top-14 bottom-0 flex items-center justify-center" aria-busy="true" aria-live="polite">
+      <div className="flex flex-col items-center gap-4">
+        <span className="relative flex size-3">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-fg opacity-40 motion-reduce:animate-none" />
+          <span className="relative inline-flex size-3 rounded-full bg-fg" />
+        </span>
+        <p className="text-sm text-dim">正在观测…</p>
+      </div>
     </div>
   );
 }

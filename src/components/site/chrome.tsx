@@ -19,11 +19,6 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-/** 全站共享的搜索面板开关：首页的大搜索框和顶栏按钮都打开同一个面板。 */
-export function openSearch() {
-  window.dispatchEvent(new Event("fxb:search"));
-}
-
 function Logo() {
   return (
     <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
@@ -48,19 +43,9 @@ export function Header({ index, demo }: { index: SearchEntry[]; demo: boolean })
         e.preventDefault();
         setOpen((v) => !v);
       }
-      const target = e.target as HTMLElement;
-      if (e.key === "/" && !["INPUT", "TEXTAREA"].includes(target.tagName)) {
-        e.preventDefault();
-        setOpen(true);
-      }
     };
-    const onOpen = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    window.addEventListener("fxb:search", onOpen);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("fxb:search", onOpen);
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const go = (href: string) => {
@@ -69,24 +54,27 @@ export function Header({ index, demo }: { index: SearchEntry[]; demo: boolean })
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-bg/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-4 px-5 sm:px-8">
+    <header className="sticky top-0 z-40 border-b border-line/60 bg-bg/80 backdrop-blur-xl">
+      <div className="mx-auto flex h-14 max-w-none items-center justify-between gap-2 px-4 sm:gap-4 sm:px-8">
         <div className="flex items-center gap-3">
           <Logo />
           {demo && <span className="rounded-full border border-line px-2 py-0.5 text-[11px] text-faint" title="当前为虚构的示范内容，运行流水线后显示真实资讯">示范数据</span>}
         </div>
 
-        <nav className="hidden items-center gap-1 md:flex" aria-label="主导航">
-          {NAV.map((n) => (
+        <nav className="flex items-center gap-0.5" aria-label="主导航">
+          {NAV.slice(1).map(({ href, label, icon: Icon }) => (
             <Link
-              key={n.href}
-              href={n.href}
+              key={href}
+              href={href}
+              aria-label={label}
+              aria-current={isActive(pathname, href) ? "page" : undefined}
               className={cn(
-                "rounded-full px-3.5 py-1.5 text-sm transition-colors",
-                isActive(pathname, n.href) ? "bg-raised text-fg" : "text-dim hover:text-fg",
+                "flex h-8 items-center gap-1.5 rounded-full px-2.5 text-sm transition-colors sm:px-3",
+                isActive(pathname, href) ? "bg-raised text-fg" : "text-dim hover:text-fg",
               )}
             >
-              {n.label}
+              <Icon className="size-4 sm:hidden" strokeWidth={1.75} />
+              <span className="hidden sm:inline">{label}</span>
             </Link>
           ))}
         </nav>
@@ -98,7 +86,7 @@ export function Header({ index, demo }: { index: SearchEntry[]; demo: boolean })
             aria-label="搜索事件"
           >
             <Search className="size-3.5" />
-            <span className="hidden lg:inline">搜索</span>
+            <span className="hidden lg:inline">跳转</span>
             <kbd className="hidden font-mono text-[11px] text-faint lg:inline">⌘K</kbd>
           </button>
           <button
@@ -137,24 +125,6 @@ export function Header({ index, demo }: { index: SearchEntry[]; demo: boolean })
         </Command>
       </CommandDialog>
     </header>
-  );
-}
-
-export function MobileTabBar() {
-  const pathname = usePathname();
-  return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden" aria-label="主导航">
-      <ul className="grid grid-cols-5">
-        {NAV.map(({ href, label, icon: Icon }) => (
-          <li key={href}>
-            <Link href={href} className={cn("flex flex-col items-center gap-1 py-2.5 text-[11px]", isActive(pathname, href) ? "text-fg" : "text-faint")}>
-              <Icon className="size-5" strokeWidth={1.75} />
-              {label}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </nav>
   );
 }
 

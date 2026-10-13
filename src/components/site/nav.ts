@@ -1,10 +1,9 @@
-import { Home, SlidersHorizontal, Activity, CalendarDays, Bookmark, type LucideIcon } from "lucide-react";
+import { Sparkles, List, CalendarDays, Bookmark, type LucideIcon } from "lucide-react";
 
 export const NAV: { href: string; label: string; hint: string; icon: LucideIcon }[] = [
-  { href: "/", label: "今日", hint: "今天最重要的事", icon: Home },
-  { href: "/signals", label: "信号", hint: "全部资料与滤网", icon: SlidersHorizontal },
-  { href: "/resonance", label: "共振", hint: "多少声音在说", icon: Activity },
-  { href: "/edition", label: "日报", hint: "每日成刊与归档", icon: CalendarDays },
+  { href: "/", label: "星场", hint: "最近 72 小时的事件天空", icon: Sparkles },
+  { href: "/edition", label: "日报", hint: "逐帧放映每日成刊", icon: CalendarDays },
+  { href: "/signals", label: "列表", hint: "全部资料与滤网（文字视图）", icon: List },
   { href: "/clips", label: "收藏", hint: "你保存的事件", icon: Bookmark },
 ];
 
