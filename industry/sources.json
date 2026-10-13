@@ -1,0 +1,19 @@
+{
+  "$comment": "示范信源。tier: T1 = 官方一手，T2 = 媒体与个人。换行业时替换这份名单即可。",
+  "sources": [
+    { "id": "openai", "name": "OpenAI", "kind": "rss", "tier": "T1", "feedUrl": "https://openai.com/news/rss.xml", "homepage": "https://openai.com/news" },
+    { "id": "deepmind", "name": "Google DeepMind", "kind": "rss", "tier": "T1", "feedUrl": "https://deepmind.google/blog/rss.xml", "homepage": "https://deepmind.google/discover/blog" },
+    { "id": "huggingface", "name": "Hugging Face", "kind": "rss", "tier": "T1", "feedUrl": "https://huggingface.co/blog/feed.xml", "homepage": "https://huggingface.co/blog" },
+    { "id": "nvidia", "name": "NVIDIA", "kind": "rss", "tier": "T1", "feedUrl": "https://blogs.nvidia.com/feed/", "homepage": "https://blogs.nvidia.com" },
+    { "id": "msr", "name": "Microsoft Research", "kind": "rss", "tier": "T1", "feedUrl": "https://www.microsoft.com/en-us/research/feed/", "homepage": "https://www.microsoft.com/en-us/research" },
+    { "id": "github", "name": "GitHub Blog", "kind": "rss", "tier": "T1", "feedUrl": "https://github.blog/ai-and-ml/feed/", "homepage": "https://github.blog" },
+    { "id": "bair", "name": "Berkeley AI Research", "kind": "rss", "tier": "T1", "feedUrl": "https://bair.berkeley.edu/blog/feed.xml", "homepage": "https://bair.berkeley.edu/blog" },
+    { "id": "verge", "name": "The Verge", "kind": "rss", "tier": "T2", "feedUrl": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", "homepage": "https://www.theverge.com/ai-artificial-intelligence" },
+    { "id": "techcrunch", "name": "TechCrunch", "kind": "rss", "tier": "T2", "feedUrl": "https://techcrunch.com/category/artificial-intelligence/feed/", "homepage": "https://techcrunch.com/category/artificial-intelligence" },
+    { "id": "arstechnica", "name": "Ars Technica", "kind": "rss", "tier": "T2", "feedUrl": "https://arstechnica.com/ai/feed/", "homepage": "https://arstechnica.com/ai" },
+    { "id": "mittr", "name": "MIT Technology Review", "kind": "rss", "tier": "T2", "feedUrl": "https://www.technologyreview.com/topic/artificial-intelligence/feed", "homepage": "https://www.technologyreview.com" },
+    { "id": "decoder", "name": "The Decoder", "kind": "rss", "tier": "T2", "feedUrl": "https://the-decoder.com/feed/", "homepage": "https://the-decoder.com" },
+    { "id": "simonw", "name": "Simon Willison", "kind": "rss", "tier": "T2", "feedUrl": "https://simonwillison.net/atom/everything/", "homepage": "https://simonwillison.net" },
+    { "id": "latentspace", "name": "Latent Space", "kind": "rss", "tier": "T2", "feedUrl": "https://www.latent.space/feed", "homepage": "https://www.latent.space" }
+  ]
+}
