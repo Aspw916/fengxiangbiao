@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { axisTime, axisU, BANDS, heatAt, matches, RANGE_H, type SkyEvent } from "@/lib/sky";
 import { FocusReel } from "./focus-reel";
 import { RefreshControl } from "./refresh-control";
+import { useLastVisit } from "./use-last-visit";
+import { relTime } from "@/lib/format";
 
 const PLAY_MS = 9000;
 const CLOCK_MS = 15_000;
@@ -132,6 +134,17 @@ export function Sky({
     [bodies, isVisible, q],
   );
   const focusOrder = ranked.length ? ranked.map((b) => b.e) : events.filter((e) => e.selected);
+
+  const lastVisit = useLastVisit();
+  const [initialIds] = useState(() => new Set(events.map((e) => e.id)));
+  const fresh = useMemo(
+    () =>
+      events
+        .filter((e) => e.selected && ((lastVisit !== null && e.first > lastVisit) || !initialIds.has(e.id)))
+        .sort((a, b) => b.first - a.first),
+    [events, lastVisit, initialIds],
+  );
+  const freshIds = useMemo(() => new Set(fresh.map((e) => e.id)), [fresh]);
   const maxHeat = Math.max(1, ...bodies.map((b) => b.heat));
   const diameter = (heat: number) => (8 + Math.sqrt(heat / maxHeat) * 46) * scale;
 
@@ -348,6 +361,17 @@ export function Sky({
             {officialOnly && " · 仅一手"}
           </p>
           <RefreshControl generatedAt={generatedAt} mode={mode} now={now} />
+          {fresh.length > 0 && (
+            <button
+              type="button"
+              onClick={() => (setT(null), openFocus(fresh[0].id))}
+              className="fade-in pointer-events-auto mt-2 inline-flex items-center gap-1.5 rounded-full bg-fg px-2.5 py-1 text-xs font-medium text-bg hover:opacity-90"
+            >
+              <span className="size-1.5 rounded-full bg-bg" aria-hidden />
+              {lastVisit !== null && fresh.some((e) => initialIds.has(e.id)) ? `上次来是${relTime(new Date(lastVisit).toISOString(), now)} · 之后新增 ${fresh.length} 件事` : `刚刚新增 ${fresh.length} 件事`}
+              <span aria-hidden>→</span>
+            </button>
+          )}
         </div>
 
         <div className="absolute top-5 right-4 z-10 flex items-center rounded-full border border-line bg-surface/80 backdrop-blur sm:top-7 sm:right-8" title={ZOOM_HINT}>
@@ -454,7 +478,7 @@ export function Sky({
                   const d = star ? diameter(b.heat) : 3;
                   const glow = star ? Math.round(6 + (b.e.score / 100) * 26 * (0.4 + b.heat / maxHeat)) : 0;
                   const opacity = !visible ? 0 : !match ? 0.08 : star ? 0.35 + (b.e.score / 100) * 0.65 : 0.25;
-                  const fresh = star && t - b.e.first < 6 * 3600_000 && t >= b.e.first;
+                  const recent = star && t - b.e.first < 6 * 3600_000 && t >= b.e.first;
                   return (
                     <button
                       key={b.e.id}
@@ -479,7 +503,8 @@ export function Sky({
                       className={cn(
                         "star absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-fg focus-visible:ring-offset-4 focus-visible:ring-offset-bg",
                         star ? "bg-fg" : "pointer-events-none bg-dim",
-                        fresh && !reduced && "star-pulse",
+                        recent && !reduced && "star-pulse",
+                        star && freshIds.has(b.e.id) && "star-new",
                         !visible && "pointer-events-none",
                       )}
                       style={{ left: b.x, top: b.y, width: d, height: d, opacity, boxShadow: glow ? `0 0 ${glow}px ${glow / 3}px color-mix(in oklab, var(--fg) 30%, transparent)` : undefined }}
