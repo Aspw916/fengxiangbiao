@@ -237,7 +237,7 @@ export function Sky({ events, now, initialFocus }: { events: SkyEvent[]; now: nu
 
   return (
     <>
-      <div className="fixed inset-x-0 top-14 bottom-0 overflow-hidden select-none">
+      <div className="fixed inset-x-0 top-14 bottom-0 overflow-hidden bg-bg select-none">
         <div className="pointer-events-none absolute top-5 left-5 z-10 sm:top-7 sm:left-8">
           <p className="text-xs text-faint">{hoursAgo === 0 ? "此刻" : `${hoursAgo} 小时前`}</p>
           <p className="mt-1 font-mono text-xl tabular-nums sm:text-2xl">{stamp(t)}</p>
@@ -479,7 +479,7 @@ export function Sky({ events, now, initialFocus }: { events: SkyEvent[]; now: nu
                       inputRef.current?.blur();
                     }
                   }}
-                  placeholder="搜一件事，如“开源”；输入 / 看指令"
+                  placeholder="搜事件，或输入 / 看指令"
                   className="h-full min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-faint"
                   aria-label="指令栏"
                   enterKeyHint="go"
