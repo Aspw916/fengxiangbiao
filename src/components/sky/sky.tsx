@@ -4,13 +4,21 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
-import { Pause, Play, RotateCcw, Sparkles } from "lucide-react";
+import { Minus, Pause, Play, Plus, RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BANDS, heatAt, matches, type SkyEvent } from "@/lib/sky";
 import { FocusReel } from "./focus-reel";
+import { RefreshControl } from "./refresh-control";
 
 const RANGE_H = 72;
 const PLAY_MS = 9000;
+const CLOCK_MS = 15_000;
+const MAX_ZOOM = 4;
+const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；双击复位";
+
+function hm(t: number) {
+  return new Date(t + 8 * 3600_000).toISOString().slice(11, 16);
+}
 
 function hash01(id: string) {
   let h = 2166136261;
@@ -51,15 +59,35 @@ function useReducedMotion() {
 
 type Command = { cmd: string; hint: string; run: () => void };
 
-export function Sky({ events, now, initialFocus }: { events: SkyEvent[]; now: number; initialFocus?: string }) {
+export function Sky({
+  events,
+  now: renderedAt,
+  generatedAt,
+  mode,
+  initialFocus,
+}: {
+  events: SkyEvent[];
+  now: number;
+  generatedAt: string;
+  mode: "demo" | "live";
+  initialFocus?: string;
+}) {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const reduced = useReducedMotion();
   const [fieldRef, size] = useSize<HTMLDivElement>();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [now, setNow] = useState(renderedAt);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), CLOCK_MS);
+    return () => clearInterval(id);
+  }, []);
   const start = now - RANGE_H * 3600_000;
-  const [t, setT] = useState(now);
+  // null 表示跟随实时时间；拖动或回放时固定到某个时刻。
+  const [pinned, setPinned] = useState<number | null>(null);
+  const t = pinned ?? now;
+  const setT = setPinned;
   const [playing, setPlaying] = useState(false);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -139,33 +167,39 @@ export function Sky({ events, now, initialFocus }: { events: SkyEvent[]; now: nu
     window.history.replaceState(null, "", url);
   }, []);
 
+  const [playSpan, setPlaySpan] = useState({ from: 0, to: 0 });
   const play = useCallback(() => {
     if (reduced) {
-      setT(now);
+      setT(null);
       return;
     }
+    setPlaySpan({ from: start, to: now });
     setPlaying(true);
     setT(start);
-  }, [reduced, now, start]);
+  }, [reduced, now, start, setT]);
 
   useEffect(() => {
     if (!playing) return;
     let raf = 0;
     const begin = performance.now();
-    const from = start;
+    const { from, to } = playSpan;
     const tick = (ts: number) => {
       const p = Math.min(1, (ts - begin) / PLAY_MS);
-      setT(from + (now - from) * p);
-      if (p < 1) raf = requestAnimationFrame(tick);
-      else setPlaying(false);
+      if (p < 1) {
+        setT(from + (to - from) * p);
+        raf = requestAnimationFrame(tick);
+      } else {
+        setT(null);
+        setPlaying(false);
+      }
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, start, now]);
+  }, [playing, playSpan, setT]);
 
   const commands: Command[] = [
     { cmd: "/回放", hint: "重演最近 72 小时", run: play },
-    { cmd: "/现在", hint: "回到此刻", run: () => (setPlaying(false), setT(now)) },
+    { cmd: "/现在", hint: "回到当前时间", run: () => (setPlaying(false), setT(null)) },
     { cmd: "/日报", hint: "放映今天的日报", run: () => router.push("/edition") },
     { cmd: "/一手", hint: officialOnly ? "显示全部来源" : "只看有一手信源的事件", run: () => setOfficialOnly((v) => !v) },
     { cmd: "/尘埃", hint: showDust ? "隐藏未入选的资料" : "显示未入选的资料", run: () => setShowDust((v) => !v) },
@@ -218,15 +252,73 @@ export function Sky({ events, now, initialFocus }: { events: SkyEvent[]; now: nu
     };
   }, []);
 
-  const onWheel = (ev: React.WheelEvent) => {
-    const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-    const px = ev.clientX - rect.left;
-    const py = ev.clientY - rect.top;
+  const zoomAt = useCallback((factor: number, px: number, py: number) => {
     setView((v) => {
-      const k = Math.max(1, Math.min(3, v.k * (ev.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      const k = Math.max(1, Math.min(MAX_ZOOM, v.k * factor));
       if (k === 1) return { x: 0, y: 0, k };
       return { k, x: px - ((px - v.x) / v.k) * k, y: py - ((py - v.y) / v.k) * k };
     });
+  }, []);
+  const zoomCenter = (factor: number) => zoomAt(factor, size.w / 2, size.h / 2);
+
+  const zoomed = useRef(false);
+  useEffect(() => {
+    zoomed.current = view.k > 1;
+  }, [view.k]);
+
+  // 只拦截带修饰键的滚轮（含触控板捏合）和 Safari 手势，避免和浏览器整页缩放叠加；普通滚轮只在放大后用于平移。
+  useEffect(() => {
+    const el = fieldRef.current;
+    if (!el) return;
+    let gesture = 0;
+    const local = (x: number, y: number) => {
+      const r = el.getBoundingClientRect();
+      return [x - r.left, y - r.top] as const;
+    };
+    const onWheel = (ev: WheelEvent) => {
+      if (ev.ctrlKey || ev.metaKey) {
+        ev.preventDefault();
+        if (gesture) return;
+        const [px, py] = local(ev.clientX, ev.clientY);
+        zoomAt(Math.exp(-Math.max(-50, Math.min(50, ev.deltaY)) * 0.004), px, py);
+      } else if (zoomed.current) {
+        ev.preventDefault();
+        setView((v) => ({ ...v, x: v.x - ev.deltaX, y: v.y - ev.deltaY }));
+      }
+    };
+    type GestureEvent = Event & { scale: number; clientX: number; clientY: number };
+    const onGestureStart = (ev: Event) => {
+      ev.preventDefault();
+      gesture = 1;
+    };
+    const onGestureChange = (ev: Event) => {
+      ev.preventDefault();
+      const g = ev as GestureEvent;
+      const [px, py] = local(g.clientX, g.clientY);
+      zoomAt(g.scale / gesture, px, py);
+      gesture = g.scale;
+    };
+    const onGestureEnd = (ev: Event) => {
+      ev.preventDefault();
+      gesture = 0;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("gesturestart", onGestureStart);
+    el.addEventListener("gesturechange", onGestureChange);
+    el.addEventListener("gestureend", onGestureEnd);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("gesturestart", onGestureStart);
+      el.removeEventListener("gesturechange", onGestureChange);
+      el.removeEventListener("gestureend", onGestureEnd);
+    };
+  }, [fieldRef, zoomAt]);
+
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; mx: number; my: number } | null>(null);
+  const pinchState = () => {
+    const [a, b] = [...touches.current.values()];
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
   };
 
   const focusSlides = focusOrder.map((e) => ({ kind: "event" as const, e }));
@@ -238,36 +330,89 @@ export function Sky({ events, now, initialFocus }: { events: SkyEvent[]; now: nu
   return (
     <>
       <div className="fixed inset-x-0 top-14 bottom-0 overflow-hidden bg-bg select-none">
-        <div className="pointer-events-none absolute top-5 left-5 z-10 sm:top-7 sm:left-8">
-          <p className="text-xs text-faint">{hoursAgo === 0 ? "此刻" : `${hoursAgo} 小时前`}</p>
+        <div className="pointer-events-none absolute top-5 left-5 z-10 max-w-[calc(100%-9.5rem)] sm:top-7 sm:left-8">
+          <p className="flex items-center gap-1.5 text-xs text-faint">
+            {pinned === null ? (
+              <>
+                <span className="size-1.5 rounded-full bg-fg/70" aria-hidden />
+                实时 · 北京时间
+              </>
+            ) : hoursAgo === 0 ? (
+              "不到 1 小时前"
+            ) : (
+              `${hoursAgo} 小时前`
+            )}
+          </p>
           <p className="mt-1 font-mono text-xl tabular-nums sm:text-2xl">{stamp(t)}</p>
           <p className="mt-1 text-xs text-dim">
             {ranked.length} 件事在发光{q && ` · 匹配“${q}”`}
             {officialOnly && " · 仅一手"}
           </p>
+          <RefreshControl generatedAt={generatedAt} mode={mode} now={now} />
+        </div>
+
+        <div className="absolute top-5 right-4 z-10 flex items-center rounded-full border border-line bg-surface/80 backdrop-blur sm:top-7 sm:right-8" title={ZOOM_HINT}>
+          <button type="button" onClick={() => zoomCenter(1 / 1.25)} disabled={view.k <= 1} className="flex size-8 items-center justify-center text-dim hover:text-fg disabled:opacity-40" aria-label="缩小星空">
+            <Minus className="size-3.5" />
+          </button>
+          <button type="button" onClick={() => setView({ x: 0, y: 0, k: 1 })} className="w-11 font-mono text-[11px] text-dim tabular-nums hover:text-fg" aria-label="星空缩放复位">
+            {Math.round(view.k * 100)}%
+          </button>
+          <button type="button" onClick={() => zoomCenter(1.25)} disabled={view.k >= MAX_ZOOM} className="flex size-8 items-center justify-center text-dim hover:text-fg disabled:opacity-40" aria-label="放大星空">
+            <Plus className="size-3.5" />
+          </button>
         </div>
 
         <div
           ref={fieldRef}
           className={cn("absolute inset-0 touch-none", view.k > 1 ? "cursor-grab" : "cursor-default")}
-          onWheel={onWheel}
           onDoubleClick={() => setView({ x: 0, y: 0, k: 1 })}
           onPointerDown={(ev) => {
+            if (ev.pointerType === "touch") {
+              const rect = ev.currentTarget.getBoundingClientRect();
+              touches.current.set(ev.pointerId, { x: ev.clientX - rect.left, y: ev.clientY - rect.top });
+              if (touches.current.size === 2) {
+                pinch.current = pinchState();
+                if (drag.current) drag.current.moved = true;
+                return;
+              }
+            }
             drag.current = { x: ev.clientX, y: ev.clientY, vx: view.x, vy: view.y, moved: false };
           }}
           onPointerMove={(ev) => {
+            if (ev.pointerType === "touch" && touches.current.has(ev.pointerId)) {
+              const rect = ev.currentTarget.getBoundingClientRect();
+              touches.current.set(ev.pointerId, { x: ev.clientX - rect.left, y: ev.clientY - rect.top });
+              const p = pinch.current;
+              if (p && touches.current.size === 2) {
+                const next = pinchState();
+                setView((v) => ({ ...v, x: v.x + next.mx - p.mx, y: v.y + next.my - p.my }));
+                zoomAt(next.dist / Math.max(1, p.dist), next.mx, next.my);
+                pinch.current = next;
+                return;
+              }
+            }
             const d = drag.current;
-            if (!d) return;
+            if (!d || pinch.current) return;
             const dx = ev.clientX - d.x;
             const dy = ev.clientY - d.y;
             if (!d.moved && Math.hypot(dx, dy) < 5) return;
             d.moved = true;
             setView((v) => ({ ...v, x: d.vx + dx, y: d.vy + dy }));
           }}
-          onPointerUp={() => {
+          onPointerUp={(ev) => {
+            touches.current.delete(ev.pointerId);
+            if (touches.current.size < 2) pinch.current = null;
             setTimeout(() => (drag.current = null), 0);
           }}
-          onPointerLeave={() => (drag.current = null)}
+          onPointerCancel={(ev) => {
+            touches.current.delete(ev.pointerId);
+            pinch.current = null;
+            drag.current = null;
+          }}
+          onPointerLeave={(ev) => {
+            if (ev.pointerType !== "touch") drag.current = null;
+          }}
           aria-label="事件星场"
           role="group"
         >
@@ -279,7 +424,7 @@ export function Sky({ events, now, initialFocus }: { events: SkyEvent[]; now: nu
                 return (
                   <div key={h} aria-hidden className={cn("absolute bg-line/60", portrait ? "h-px" : "w-px")} style={portrait ? { top: pos, left: pad.l - 12, right: pad.r - 12 } : { left: pos, top: pad.t - 24, bottom: pad.b - 24 }}>
                     <span className={cn("absolute font-mono text-[10px] whitespace-nowrap text-faint", portrait ? "right-0 -translate-y-full pb-1" : "bottom-0 left-2")}>
-                      {h === 0 ? "现在" : `-${h}h`}
+                      {h === 0 ? hm(now) : `-${h}h`}
                     </span>
                   </div>
                 );
@@ -404,15 +549,16 @@ export function Sky({ events, now, initialFocus }: { events: SkyEvent[]; now: nu
                 value={t}
                 onChange={(ev) => {
                   setPlaying(false);
-                  setT(Number(ev.target.value));
+                  const v = Number(ev.target.value);
+                  setT(v >= now - 60_000 ? null : v);
                 }}
                 aria-label="时间"
                 aria-valuetext={stamp(t)}
               />
               <button
-                onClick={() => (setPlaying(false), setT(now), setView({ x: 0, y: 0, k: 1 }))}
-                className={cn("flex size-9 shrink-0 items-center justify-center rounded-full text-dim hover:text-fg", t === now && view.k === 1 && "invisible")}
-                aria-label="回到此刻"
+                onClick={() => (setPlaying(false), setT(null), setView({ x: 0, y: 0, k: 1 }))}
+                className={cn("flex size-9 shrink-0 items-center justify-center rounded-full text-dim hover:text-fg", pinned === null && view.k === 1 && "invisible")}
+                aria-label="回到当前时间"
               >
                 <RotateCcw className="size-4" />
               </button>

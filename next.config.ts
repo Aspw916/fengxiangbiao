@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   outputFileTracingIncludes: {
     "/api/cron/pipeline": ["./industry/prompts/**/*"],
+    "/api/refresh": ["./industry/prompts/**/*"],
   },
   turbopack: {
     rules: {

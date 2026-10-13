@@ -4,8 +4,12 @@ import { seedItems } from "./seed";
 import { readPersisted } from "./persist";
 import { SOURCES } from "./sources";
 
-const TTL = 60_000;
+const TTL = 15_000;
 let cache: { at: number; store: Store } | null = null;
+
+export function invalidateStore() {
+  cache = null;
+}
 
 /** 公开读取层：页面、API、RSS 都从这里读。有采集结果读采集结果，否则用示范数据。 */
 export async function getStore(): Promise<Store> {

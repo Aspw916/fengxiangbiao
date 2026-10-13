@@ -10,7 +10,13 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   return (
     <>
       <h1 className="sr-only">AI 天象台：最近 72 小时的 AI 事件星场</h1>
-      <Sky events={events} now={currentTime()} initialFocus={typeof focus === "string" ? focus : undefined} />
+      <Sky
+        events={events}
+        now={currentTime()}
+        generatedAt={store.generatedAt}
+        mode={store.mode}
+        initialFocus={typeof focus === "string" ? focus : undefined}
+      />
     </>
   );
 }

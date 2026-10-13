@@ -1,4 +1,4 @@
-import { runPipeline } from "@/engine/pipeline";
+import { RefreshRejected, runLocked } from "@/engine/refresh";
 
 export const maxDuration = 300;
 
@@ -12,9 +12,10 @@ export async function GET(req: Request) {
     return Response.json({ error: "线上环境必须设置 CRON_SECRET" }, { status: 500 });
   }
   try {
-    const report = await runPipeline();
+    const report = await runLocked({ manual: false });
     return Response.json({ ok: true, ...report });
   } catch (err) {
+    if (err instanceof RefreshRejected) return Response.json({ ok: false, error: err.message, ...err.status }, { status: 409 });
     return Response.json({ ok: false, error: (err as Error).message }, { status: 500 });
   }
 }
