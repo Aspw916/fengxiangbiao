@@ -16,6 +16,7 @@ import { relTime } from "@/lib/format";
 const PLAY_MS = 9000;
 const CLOCK_MS = 15_000;
 const SCRUB_STEPS = 1000;
+const ENTER_MS = 900;
 const MAX_ZOOM = 4;
 const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；双击复位";
 
@@ -81,6 +82,12 @@ export function Sky({
   const [fieldRef, size] = useSize<HTMLDivElement>();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [entering, setEntering] = useState(true);
+  useEffect(() => {
+    const id = setTimeout(() => setEntering(false), ENTER_MS + 900);
+    return () => clearTimeout(id);
+  }, []);
+
   const [now, setNow] = useState(renderedAt);
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), CLOCK_MS);
@@ -120,7 +127,7 @@ export function Sky({
       const y = pad.t + ny * areaH;
       const heat = e.first <= t ? heatAt(e, t) : 0;
       const official = e.reports.some((r) => r.tier === "T1");
-      return { e, x, y, heat, lit: e.first <= t, official };
+      return { e, u, x, y, heat, lit: e.first <= t, official };
     });
   }, [inRange, now, portrait, t, pad.l, pad.t, areaW, areaH]);
 
@@ -441,7 +448,7 @@ export function Sky({
           aria-label="事件星场"
           role="group"
         >
-          <div className="absolute inset-0 origin-top-left" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
+          <div className={cn("absolute inset-0 origin-top-left", playing && "sky-playing")} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
             {size.w > 0 &&
               ticks.map((h) => {
                 const u = axisU(now - h * 3600_000, now);
@@ -508,8 +515,9 @@ export function Sky({
                         recent && !reduced && "star-pulse",
                         star && freshIds.has(b.e.id) && "star-new",
                         !visible && "pointer-events-none",
+                        entering && "star-enter",
                       )}
-                      style={{ left: b.x, top: b.y, width: d, height: d, opacity, boxShadow: glow ? `0 0 ${glow}px ${glow / 3}px color-mix(in oklab, var(--fg) 30%, transparent)` : undefined }}
+                      style={{ left: b.x, top: b.y, width: d, height: d, opacity, animationDelay: entering ? `${Math.round(b.u * ENTER_MS)}ms` : undefined, boxShadow: glow ? `0 0 ${glow}px ${glow / 3}px color-mix(in oklab, var(--fg) 30%, transparent)` : undefined }}
                     />
                   );
                 })}
