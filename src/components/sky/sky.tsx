@@ -11,6 +11,7 @@ import { FocusReel } from "./focus-reel";
 import { RefreshControl } from "./refresh-control";
 import { useLastVisit } from "./use-last-visit";
 import { DensityTrack } from "./density-track";
+import { Minimap } from "./minimap";
 import { relTime } from "@/lib/format";
 
 const PLAY_MS = 9000;
@@ -18,6 +19,7 @@ const CLOCK_MS = 15_000;
 const SCRUB_STEPS = 1000;
 const ENTER_MS = 900;
 const LINK_MAX = 6;
+const MINIMAP_AT = 1.5;
 const MAX_ZOOM = 4;
 const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；双击复位。键盘：← → 按时间、↑ ↓ 按热度切换事件，回车打开";
 
@@ -408,16 +410,27 @@ export function Sky({
           )}
         </div>
 
-        <div className="absolute top-5 right-4 z-10 flex items-center rounded-full border border-line bg-surface/80 backdrop-blur sm:top-7 sm:right-8" title={ZOOM_HINT}>
-          <button type="button" onClick={() => zoomCenter(1 / 1.25)} disabled={view.k <= 1} className="flex size-8 items-center justify-center text-dim hover:text-fg disabled:opacity-40" aria-label="缩小星空">
-            <Minus className="size-3.5" />
-          </button>
-          <button type="button" onClick={() => setView({ x: 0, y: 0, k: 1 })} className="w-11 font-mono text-[11px] text-dim tabular-nums hover:text-fg" aria-label="星空缩放复位">
-            {Math.round(view.k * 100)}%
-          </button>
-          <button type="button" onClick={() => zoomCenter(1.25)} disabled={view.k >= MAX_ZOOM} className="flex size-8 items-center justify-center text-dim hover:text-fg disabled:opacity-40" aria-label="放大星空">
-            <Plus className="size-3.5" />
-          </button>
+        <div className="absolute top-5 right-4 z-10 flex flex-col items-end gap-2 sm:top-7 sm:right-8">
+          <div className="flex items-center rounded-full border border-line bg-surface/80 backdrop-blur" title={ZOOM_HINT}>
+            <button type="button" onClick={() => zoomCenter(1 / 1.25)} disabled={view.k <= 1} className="flex size-8 items-center justify-center text-dim hover:text-fg disabled:opacity-40" aria-label="缩小星空">
+              <Minus className="size-3.5" />
+            </button>
+            <button type="button" onClick={() => setView({ x: 0, y: 0, k: 1 })} className="w-11 font-mono text-[11px] text-dim tabular-nums hover:text-fg" aria-label="星空缩放复位">
+              {Math.round(view.k * 100)}%
+            </button>
+            <button type="button" onClick={() => zoomCenter(1.25)} disabled={view.k >= MAX_ZOOM} className="flex size-8 items-center justify-center text-dim hover:text-fg disabled:opacity-40" aria-label="放大星空">
+              <Plus className="size-3.5" />
+            </button>
+          </div>
+          {view.k >= MINIMAP_AT && size.w > 0 && (
+            <Minimap
+              dots={bodies.filter((b) => b.e.selected && isVisible(b)).map((b) => ({ id: b.e.id, x: b.x, y: b.y, bright: b.heat / maxHeat }))}
+              size={size}
+              view={view}
+              width={compact ? 96 : 140}
+              onJump={setView}
+            />
+          )}
         </div>
 
         <div
