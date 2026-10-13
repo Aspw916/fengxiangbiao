@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { Moon, Search, Sun } from "lucide-react";
-import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { NAV, SECONDARY_NAV } from "./nav";
 
@@ -103,6 +103,7 @@ export function Masthead({ dateLine, issue, index }: { dateLine: string; issue: 
       </div>
 
       <CommandDialog open={open} onOpenChange={setOpen} title="查找稿件" description="按标题搜索事件">
+        <Command>
         <CommandInput placeholder="输入关键词，例如：开源、智能体、监管…" />
         <CommandList>
           <CommandEmpty>没有找到相关稿件，换个词试试。</CommandEmpty>
@@ -123,6 +124,7 @@ export function Masthead({ dateLine, issue, index }: { dateLine: string; issue: 
             ))}
           </CommandGroup>
         </CommandList>
+        </Command>
       </CommandDialog>
     </header>
   );
