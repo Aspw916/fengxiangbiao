@@ -2,6 +2,7 @@
 
 import { X } from "lucide-react";
 import type { SkyEvent } from "@/lib/sky";
+import { ScoreBadge } from "@/components/score-badge";
 
 /** 触屏上点星星弹出的底部卡片：先看摘要，再决定是否展开。 */
 export function StarSheet({ e, heat, onOpen, onClose }: { e: SkyEvent; heat: number; onOpen: () => void; onClose: () => void }) {
@@ -9,9 +10,9 @@ export function StarSheet({ e, heat, onOpen, onClose }: { e: SkyEvent; heat: num
     <div className="sheet-up fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" role="dialog" aria-label={e.title}>
       <div className="mx-auto max-w-lg rounded-3xl border border-line bg-surface/95 p-4 shadow-2xl backdrop-blur">
         <div className="flex items-start justify-between gap-3">
-          <p className="pt-1 text-[11px] text-faint">
-            {e.categoryLabel} · {e.sourceCount} 个来源 · 评分 {e.score} · 共振 {heat.toFixed(1)}
-          </p>
+          <div className="pt-1 text-[11px] text-faint">
+            {e.categoryLabel} · {e.sourceCount} 个来源 · <ScoreBadge score={e.score} official={e.reports.some((r) => r.tier === "T1")} selected={e.selected} /> · 共振 {heat.toFixed(1)}
+          </div>
           <button type="button" onClick={onClose} className="-mt-1 -mr-1 flex size-8 shrink-0 items-center justify-center rounded-full text-dim hover:text-fg" aria-label="关闭">
             <X className="size-4" />
           </button>

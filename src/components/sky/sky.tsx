@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import Link from "next/link";
 import { Minus, Pause, Play, Plus, RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ScoreBadge } from "@/components/score-badge";
 import { axisTime, axisU, BANDS, heatAt, matches, RANGE_H, type SkyEvent } from "@/lib/sky";
 import { FocusReel } from "./focus-reel";
 import { RefreshControl } from "./refresh-control";
@@ -112,6 +113,12 @@ export function Sky({
   const [focusId, setFocusId] = useState<string | null>(initialFocus ?? null);
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const pointerType = useRef("mouse");
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armHover = (id: string | null) => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    if (id) setHovered(id);
+    else hoverTimer.current = setTimeout(() => setHovered(null), 180);
+  };
   const [sheet, setSheet] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
 
@@ -564,8 +571,8 @@ export function Sky({
                       tabIndex={visible && star ? 0 : -1}
                       aria-hidden={!visible || !star}
                       aria-label={`${b.e.title}，${b.e.categoryLabel}，${b.e.sourceCount} 个来源，评分 ${b.e.score}`}
-                      onMouseEnter={() => setHovered(b.e.id)}
-                      onMouseLeave={() => setHovered((h) => (h === b.e.id ? null : h))}
+                      onMouseEnter={() => armHover(b.e.id)}
+                      onMouseLeave={() => armHover(null)}
                       onFocus={() => setHovered(b.e.id)}
                       onBlur={() => setHovered((h) => (h === b.e.id ? null : h))}
                       onPointerDown={(ev) => (pointerType.current = ev.pointerType)}
@@ -608,15 +615,18 @@ export function Sky({
 
           {!sheet && hoveredBody && isVisible(hoveredBody) && hoveredBody.e.selected && (
             <div
-              className="pointer-events-none absolute z-20 w-64 rounded-2xl border border-line bg-surface/95 p-3 shadow-2xl backdrop-blur"
+              onMouseEnter={() => armHover(hoveredBody.e.id)}
+              onMouseLeave={() => armHover(null)}
+              className="absolute z-20 w-64 rounded-2xl border border-line bg-surface/95 p-3 shadow-2xl backdrop-blur"
               style={{
                 left: Math.min(size.w - 272, Math.max(8, hoveredBody.x * view.k + view.x + 18)),
                 top: Math.min(size.h - 200, Math.max(8, hoveredBody.y * view.k + view.y - 20)),
               }}
             >
-              <p className="text-[11px] text-faint">
-                {hoveredBody.e.categoryLabel} · {hoveredBody.e.sourceCount} 个来源 · 评分 {hoveredBody.e.score}
-              </p>
+              <div className="text-[11px] text-faint">
+                {hoveredBody.e.categoryLabel} · {hoveredBody.e.sourceCount} 个来源 ·{" "}
+                <ScoreBadge score={hoveredBody.e.score} official={hoveredBody.official} selected={hoveredBody.e.selected} />
+              </div>
               <p className="mt-1 text-sm leading-snug font-medium">{hoveredBody.e.title}</p>
               <p className="mt-2 text-[11px] text-faint">
                 共振 {hoveredBody.heat.toFixed(1)} · 点击聚焦 · ← → 切换

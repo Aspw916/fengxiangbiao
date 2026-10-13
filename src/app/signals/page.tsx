@@ -31,7 +31,7 @@ export default async function SignalsPage({ searchParams }: PageProps<"/signals"
   return (
     <>
       <PageHeader eyebrow="信号" title="所有进站的资料">
-        每条资料独立评分两次，左侧是平均分。一手信源 {SELECTION.thresholds.T1} 分、媒体 {SELECTION.thresholds.T2} 分以上正式入选。
+        左侧是评分，悬停或点按可以看到它代表什么。一手信源 {SELECTION.thresholds.T1} 分、媒体 {SELECTION.thresholds.T2} 分以上正式入选。
       </PageHeader>
       <SignalBoard rows={rows} categories={CATEGORIES.map((x) => ({ key: x.key, label: x.label }))} initialCategory={initial} defaultFloor={SELECTION.defaultNoiseFloor} />
     </>

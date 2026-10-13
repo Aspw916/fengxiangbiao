@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, ArrowUpRight, X } from "lucide-react";
 import { ClipButton } from "@/components/story/clip-button";
+import { ScoreBadge } from "@/components/score-badge";
 import { cn } from "@/lib/utils";
 import type { SkyEvent } from "@/lib/sky";
 
@@ -64,12 +65,12 @@ const STATUS_TEXT: Record<SkyEvent["status"], string> = { new: "刚出现", risi
 function EventSlide({ e }: { e: SkyEvent }) {
   return (
     <article>
-      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-faint">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-faint">
         <span>{e.categoryLabel}</span>
-        <span>评分 {e.score}</span>
+        <ScoreBadge score={e.score} official={e.reports.some((r) => r.tier === "T1")} selected={e.selected} />
         {STATUS_TEXT[e.status] && <span className="rounded-full border border-line px-2 py-0.5 text-xs text-dim">{STATUS_TEXT[e.status]}</span>}
         {!e.selected && <span className="text-xs">未入选</span>}
-      </p>
+      </div>
       <h2 className="mt-4 text-[34px] leading-[1.15] font-semibold tracking-tight text-balance sm:text-6xl sm:leading-[1.08]">{e.title}</h2>
       <p className="mt-6 max-w-2xl text-lg leading-8 text-dim">{e.digest}</p>
       {e.reason && <p className="mt-4 max-w-2xl text-[15px] leading-7 text-dim"><span className="text-fg">为什么重要 · </span>{e.reason}</p>}

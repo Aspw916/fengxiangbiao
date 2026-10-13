@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { ScoreBadge } from "@/components/score-badge";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 
@@ -43,14 +44,9 @@ function Histogram({ rows, floor }: { rows: SignalRow[]; floor: number }) {
 function Row({ r, faded }: { r: SignalRow; faded?: boolean }) {
   return (
     <li className={cn("transition-opacity duration-300", faded && "opacity-50")}>
-      <Link href={`/event/${r.eventId}`} data-nav className="-mx-3 grid grid-cols-[2.75rem_1fr] gap-3 rounded-2xl px-3 py-4 outline-none hover:bg-surface focus-visible:bg-surface">
-        <span className="pt-0.5">
-          <span className={cn("block font-mono text-base leading-none font-medium tabular-nums", r.selected ? "text-fg" : "text-faint")}>{r.score}</span>
-          <span className="mt-1.5 block font-mono text-[10px] text-faint tabular-nums">
-            {r.scores[0]}·{r.scores[1]}
-          </span>
-        </span>
-        <span className="min-w-0">
+      <div className="-mx-3 grid grid-cols-[3.25rem_1fr] gap-3 rounded-2xl px-3 py-4 hover:bg-surface">
+        <ScoreBadge score={r.score} official={r.tier === "T1"} selected={r.selected} compact className={cn("pt-0.5", !r.selected && "text-faint")} />
+        <Link href={`/event/${r.eventId}`} data-nav className="min-w-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-fg">
           <span className="block text-[15px] leading-snug font-medium">{r.title}</span>
           {!faded && <span className="mt-1 line-clamp-2 block text-sm leading-6 text-dim">{r.summary}</span>}
           <span className="mt-2 flex flex-wrap items-center gap-x-2 text-xs text-faint">
@@ -61,8 +57,8 @@ function Row({ r, faded }: { r: SignalRow; faded?: boolean }) {
             <span>{r.rel}</span>
             {r.selected && <span className="ml-1 rounded-full border border-line px-1.5 text-[10px] text-dim">入选</span>}
           </span>
-        </span>
-      </Link>
+        </Link>
+      </div>
     </li>
   );
 }

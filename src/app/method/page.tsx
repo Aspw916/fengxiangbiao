@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getStore } from "@/engine/store";
 import { PageHeader } from "@/components/story/marks";
+import { GRADE_LEGEND } from "@/lib/score";
 import { HEAT, SELECTION } from "../../../industry/selection";
 
 export const metadata: Metadata = { title: "方法" };
@@ -11,7 +12,7 @@ export default async function MethodPage() {
   const selected = store.items.filter((i) => i.selected).length;
   const steps = [
     { n: store.sources.length, unit: "信源", title: "采集", body: "按名单抓取 RSS。发布时间不可信或超过 72 小时的旧文不收。" },
-    { n: store.items.length, unit: "资料", title: "双评分", body: "同一套标准独立打两次分取平均，降低单次判断的偶然性。未配置模型时用启发式评分。" },
+    { n: store.items.length, unit: "资料", title: "评分", body: "按分量、增量、可信、可用打一个 0–100 的分。未配置模型时用启发式评分。" },
     { n: selected, unit: "入选", title: "过线", body: `一手信源 ${SELECTION.thresholds.T1} 分、媒体与个人 ${SELECTION.thresholds.T2} 分。` },
     { n: store.events.length, unit: "事件", title: "聚合", body: "不同来源报道的同一件事合并成一个事件，后续进展挂在同一处。" },
     { n: store.editions.length, unit: "日报", title: "成刊", body: `按分量与共振排序；共振每个来源只算一次，${HEAT.halfLifeHours} 小时减半。` },
@@ -37,6 +38,17 @@ export default async function MethodPage() {
           </li>
         ))}
       </ol>
+
+      <section id="score" className="mt-12 scroll-mt-24 text-sm leading-7 text-dim">
+        <h2 className="text-sm font-medium text-fg">评分是什么</h2>
+        <p className="mt-3">
+          评分衡量这件事本身对 AI 从业者有多值得花时间，从 0 到 100。它综合四件事：分量有多大、带来了多少新事实、材料里的证据是否撑得住、读者能不能马上用上。公司名气和术语密度不加分。
+        </p>
+        <p className="mt-3 font-mono text-xs text-faint">{GRADE_LEGEND}</p>
+        <p className="mt-3">
+          一手信源达到 {SELECTION.thresholds.T1} 分、媒体报道达到 {SELECTION.thresholds.T2} 分，才会出现在星图里。评分只看内容，不随时间变化。星星的大小是另一回事：它表示此刻有多少信源在报道，报道越久贡献越小。
+        </p>
+      </section>
 
       <section className="mt-12 text-sm leading-7 text-dim">
         <h2 className="text-sm font-medium text-fg">几条原则</h2>
