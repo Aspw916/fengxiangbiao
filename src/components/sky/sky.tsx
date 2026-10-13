@@ -17,6 +17,7 @@ const PLAY_MS = 9000;
 const CLOCK_MS = 15_000;
 const SCRUB_STEPS = 1000;
 const ENTER_MS = 900;
+const LINK_MAX = 6;
 const MAX_ZOOM = 4;
 const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；双击复位";
 
@@ -345,6 +346,17 @@ export function Sky({
   const focusSlides = focusOrder.map((e) => ({ kind: "event" as const, e }));
   const focusIndex = focusId ? Math.max(0, focusOrder.findIndex((e) => e.id === focusId)) : 0;
   const hoveredBody = bodies.find((b) => b.e.id === hovered);
+  const links = useMemo(() => {
+    if (!hoveredBody?.e.selected) return [];
+    const mine = new Set(hoveredBody.e.reports.map((r) => r.source));
+    const others = bodies.filter((b) => b !== hoveredBody && b.e.selected && isVisible(b));
+    const shared = others.filter((b) => b.e.reports.some((r) => mine.has(r.source))).slice(0, LINK_MAX);
+    const sameTopic = others
+      .filter((b) => b.e.category === hoveredBody.e.category && !shared.includes(b))
+      .sort((a, b) => Math.abs(a.e.first - hoveredBody.e.first) - Math.abs(b.e.first - hoveredBody.e.first))
+      .slice(0, Math.max(0, LINK_MAX - shared.length));
+    return [...shared.map((b) => ({ b, strong: true })), ...sameTopic.map((b) => ({ b, strong: false }))];
+  }, [hoveredBody, bodies, isVisible]);
   const hoursAgo = Math.round((now - t) / 3600_000);
   const ticks = compact ? [72, 24, 6, 0] : [72, 48, 24, 12, 6, 0];
 
@@ -477,6 +489,23 @@ export function Sky({
                 );
               })}
 
+            {hoveredBody && links.length > 0 && (
+              <svg aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible">
+                {links.map(({ b, strong }) => (
+                  <line
+                    key={b.e.id}
+                    x1={hoveredBody.x}
+                    y1={hoveredBody.y}
+                    x2={b.x}
+                    y2={b.y}
+                    className={cn("link-draw stroke-fg", strong ? "opacity-40" : "opacity-20")}
+                    strokeWidth={1}
+                    strokeDasharray={strong ? undefined : "3 4"}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </svg>
+            )}
             {size.w > 0 &&
               [...bodies]
                 .sort((a, b) => a.heat - b.heat)
@@ -549,7 +578,10 @@ export function Sky({
                 {hoveredBody.e.categoryLabel} · {hoveredBody.e.sourceCount} 个来源 · 评分 {hoveredBody.e.score}
               </p>
               <p className="mt-1 text-sm leading-snug font-medium">{hoveredBody.e.title}</p>
-              <p className="mt-2 text-[11px] text-faint">共振 {hoveredBody.heat.toFixed(1)} · 点击聚焦（触屏再点一次）</p>
+              <p className="mt-2 text-[11px] text-faint">
+                共振 {hoveredBody.heat.toFixed(1)} · 点击聚焦 · ← → 切换
+              </p>
+              {links.length > 0 && <p className="mt-1 text-[11px] text-faint">实线：同一信源报道 · 虚线：同一领域</p>}
             </div>
           )}
         </div>
