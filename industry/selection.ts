@@ -2,7 +2,7 @@
 // 每篇资料独立打两次分（0–100），取平均；平均分 ≥ 所属信源分级的门槛即为"信号"（精选）。
 
 export const SELECTION = {
-  thresholds: { T1: 60, T2: 72 } as Record<string, number>,
+  thresholds: { T1: 55, T2: 62 } as Record<string, number>,
   /** 信号台滑杆的默认位置。读者拖动它只影响自己看到的列表，不改变入选结果。 */
   defaultNoiseFloor: 65,
 } as const;
