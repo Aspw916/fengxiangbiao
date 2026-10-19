@@ -13,6 +13,7 @@ import { RefreshControl } from "./refresh-control";
 import { useLastVisit } from "./use-last-visit";
 import { DensityTrack } from "./density-track";
 import { Minimap } from "./minimap";
+import { fanAround, separateStars } from "./separate";
 import { StarSheet } from "./star-sheet";
 import { relTime } from "@/lib/format";
 
@@ -28,12 +29,6 @@ const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；�
 
 function hm(t: number) {
   return new Date(t + 8 * 3600_000).toISOString().slice(11, 16);
-}
-
-function hash01(id: string) {
-  let h = 2166136261;
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
-  return ((h >>> 0) % 10000) / 10000;
 }
 
 function stamp(t: number) {
@@ -117,11 +112,21 @@ export function Sky({
   const armHover = (id: string | null) => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     if (id) setHovered(id);
-    else hoverTimer.current = setTimeout(() => setHovered(null), 180);
+    else hoverTimer.current = setTimeout(() => (setHovered(null), setOpenCluster(null)), 180);
   };
   const [sheet, setSheet] = useState<string | null>(null);
+  const [openCluster, setOpenCluster] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
 
+  const coarse = useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia("(pointer: coarse)");
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia("(pointer: coarse)").matches,
+    () => false,
+  );
   const portrait = size.h > size.w * 1.1;
   const compact = size.w < 720;
   const pad = portrait ? { l: 36, r: 28, t: 168, b: 200 } : { l: compact ? 64 : 104, r: compact ? 40 : 150, t: 172, b: 176 };
@@ -131,9 +136,10 @@ export function Sky({
   const inRange = useMemo(() => events.filter((e) => e.first >= start - 6 * 3600_000), [events, start]);
 
   const bodies = useMemo(() => {
-    return inRange.map((e) => {
+    const pitch = Math.max(1, (portrait ? areaW : areaH) / BANDS.length);
+    const raw = inRange.map((e) => {
       const u = axisU(e.first, now);
-      const v = (e.band + 0.5 + (hash01(e.id) - 0.5) * 0.7) / BANDS.length;
+      const v = (e.band + 0.5) / BANDS.length;
       const [nx, ny] = portrait ? [v, u] : [u, v];
       const x = pad.l + nx * areaW;
       const y = pad.t + ny * areaH;
@@ -141,7 +147,34 @@ export function Sky({
       const official = e.reports.some((r) => r.tier === "T1");
       return { e, u, x, y, heat, lit: e.first <= t, official };
     });
-  }, [inRange, now, portrait, t, pad.l, pad.t, areaW, areaH]);
+    const maxHeat = Math.max(1, ...raw.map((b) => b.heat));
+    const radius = (heat: number) => ((8 + Math.sqrt(heat / maxHeat) * 46) * scale) / 2;
+    const placed = separateStars(
+      raw.filter((b) => b.lit && b.e.selected && (!officialOnly || b.official)).map((b) => ({ id: b.e.id, x: b.x, y: b.y, r: radius(b.heat), band: b.e.band, priority: b.heat })),
+      { timeAxis: portrait ? "y" : "x", pitch },
+    );
+    const byId = new Map(placed.map((p) => [p.id, p]));
+    let laid = raw.map((b) => {
+      const p = byId.get(b.e.id);
+      if (!p) return { ...b, r: 1.5, clusterId: null as string | null, count: 1, role: "solo" as const };
+      return { ...b, x: p.x, y: p.y, r: p.r, clusterId: p.clusterId, count: p.count, role: p.role };
+    });
+    if (openCluster) {
+      const members = laid.filter((b) => b.clusterId === openCluster).sort((a, b) => a.e.first - b.e.first);
+      const lead = members.find((m) => m.role === "lead");
+      if (lead && members.length > 1) {
+        const fanR = Math.max(lead.r, compact ? 16 : 13);
+        const spots = new Map(fanAround(members.filter((m) => m.e.id !== lead.e.id).map((m) => ({ id: m.e.id })), lead.x, lead.y, fanR).map((s) => [s.id, s]));
+        laid = laid.map((b) => {
+          if (b.e.id === lead.e.id) return { ...b, r: fanR };
+          const s = spots.get(b.e.id);
+          if (!s) return b;
+          return { ...b, x: Math.min(size.w - 24, Math.max(24, s.x)), y: Math.min(size.h - 24, Math.max(24, s.y)), r: fanR };
+        });
+      }
+    }
+    return laid;
+  }, [inRange, now, portrait, t, pad.l, pad.t, areaW, areaH, scale, officialOnly, openCluster, compact, size.w, size.h]);
 
   const isVisible = useCallback(
     (b: (typeof bodies)[number]) => b.lit && (b.e.selected || showDust) && (!officialOnly || b.official),
@@ -167,26 +200,30 @@ export function Sky({
   const freshIds = useMemo(() => new Set(fresh.map((e) => e.id)), [fresh]);
   const caption = playing ? inRange.reduce<SkyEvent | null>((acc, e) => (e.selected && e.first <= t && (!acc || e.first > acc.first) ? e : acc), null) : null;
   const maxHeat = Math.max(1, ...bodies.map((b) => b.heat));
-  const diameter = (heat: number) => (8 + Math.sqrt(heat / maxHeat) * 46) * scale;
 
   const labels = useMemo(() => {
+    const hits = (box: { x: number; y: number; w: number; h: number }, o: { x: number; y: number; w: number; h: number }) =>
+      box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y;
     const placed: { x: number; y: number; w: number; h: number }[] = [];
+    for (const b of bodies) {
+      if (!b.lit || !b.e.selected || (b.role === "member" && b.clusterId !== openCluster)) continue;
+      placed.push({ x: b.x - b.r - 8, y: b.y - b.r - 6, w: b.r * 2 + 16, h: b.r * 2 + 12 });
+    }
     const out: { id: string; x: number; y: number; w: number; left: boolean; title: string }[] = [];
     const limit = compact ? (q ? 4 : 3) : q ? 8 : 6;
     for (const b of ranked) {
       if (out.length >= limit) break;
-      const d = diameter(b.heat);
-      const w = Math.min(compact ? 150 : 224, b.e.title.length * 12 + 8);
-      const left = b.x + d / 2 + 10 + w > size.w - 12;
-      const x = left ? b.x - d / 2 - 10 - w : b.x + d / 2 + 10;
+      if (b.count > 1) continue;
+      const w = Math.min(compact ? 150 : 200, b.e.title.length * 12 + 8);
+      const left = b.x + b.r + 10 + w > size.w - 12;
+      const x = left ? b.x - b.r - 10 - w : b.x + b.r + 10;
       const box = { x, y: b.y - 10, w, h: 20 };
-      if (placed.some((o) => box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y)) continue;
+      if (placed.some((o) => hits(box, o))) continue;
       placed.push(box);
       out.push({ id: b.e.id, x, y: b.y, w, left, title: b.e.title });
     }
     return out;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ranked, compact, q, size.w, maxHeat, scale]);
+  }, [ranked, bodies, compact, q, size.w, openCluster]);
 
   const openFocus = useCallback((id: string) => {
     setFocusId(id);
@@ -279,17 +316,20 @@ export function Sky({
         const step = ev.key === "ArrowRight" || ev.key === "ArrowDown" ? 1 : -1;
         const at = order.findIndex((b) => b.e.id === hovered);
         const next = order[at < 0 ? (step > 0 ? 0 : order.length - 1) : (at + step + order.length) % order.length];
-        document.querySelector<HTMLElement>(`[data-star="${next.e.id}"]`)?.focus({ preventScroll: true });
+        const cluster = bodies.find((b) => b.e.id === next.e.id)?.clusterId ?? null;
+        setOpenCluster(cluster);
         setHovered(next.e.id);
+        requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-star="${next.e.id}"]`)?.focus({ preventScroll: true }));
         if (view.k > 1) setView((v) => ({ ...v, x: size.w / 2 - next.x * v.k, y: size.h / 2 - next.y * v.k }));
       } else if (ev.key === "Escape") {
         setHovered(null);
+        setOpenCluster(null);
         (document.activeElement as HTMLElement | null)?.blur();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [focusId, playing, play, ranked, openFocus, hovered, view.k, size.w, size.h]);
+  }, [focusId, playing, play, ranked, openFocus, hovered, view.k, size.w, size.h, bodies]);
 
   useEffect(() => {
     document.documentElement.style.overflow = "hidden";
@@ -498,8 +538,9 @@ export function Sky({
             if (ev.pointerType !== "touch") drag.current = null;
           }}
           onClick={(ev) => {
-            if (sheet && !drag.current?.moved && !(ev.target as HTMLElement).closest("[data-star]")) {
-              setSheet(null);
+            if (!drag.current?.moved && !(ev.target as HTMLElement).closest("[data-star]")) {
+              if (sheet) setSheet(null);
+              if (openCluster) setOpenCluster(null);
               setHovered(null);
             }
           }}
@@ -557,12 +598,17 @@ export function Sky({
                 .sort((a, b) => a.heat - b.heat)
                 .map((b) => {
                   const visible = isVisible(b);
+                  const piled = b.role === "member" && b.clusterId !== openCluster;
+                  if (piled) return null;
                   const match = !q || matches(b.e, q);
                   const star = b.e.selected;
-                  const d = star ? diameter(b.heat) : 3;
+                  const d = star ? b.r * 2 : 3;
                   const glow = star ? Math.round(6 + (b.e.score / 100) * 26 * (0.4 + b.heat / maxHeat)) : 0;
-                  const opacity = !visible ? 0 : !match ? 0.08 : star ? 0.35 + (b.e.score / 100) * 0.65 : 0.25;
+                  const apart = Boolean(openCluster && b.clusterId !== openCluster);
+                  const opacity = !visible ? 0 : !match ? 0.08 : star ? (0.78 + (b.e.score / 100) * 0.22) * (apart ? 0.28 : 1) : 0.25;
                   const recent = star && t - b.e.first < 6 * 3600_000 && t >= b.e.first;
+                  const ring = star ? "0 0 0 1.5px var(--bg)" : "";
+                  const bloom = glow ? `0 0 ${glow}px ${glow / 3}px color-mix(in oklab, var(--fg) 28%, transparent)` : "";
                   return (
                     <button
                       key={b.e.id}
@@ -570,14 +616,30 @@ export function Sky({
                       type="button"
                       tabIndex={visible && star ? 0 : -1}
                       aria-hidden={!visible || !star}
-                      aria-label={`${b.e.title}，${b.e.categoryLabel}，${b.e.sourceCount} 个来源，评分 ${b.e.score}`}
-                      onMouseEnter={() => armHover(b.e.id)}
-                      onMouseLeave={() => armHover(null)}
-                      onFocus={() => setHovered(b.e.id)}
+                      aria-label={
+                        b.count > 1 && b.clusterId !== openCluster
+                          ? `${b.e.title}，此处叠了 ${b.count} 件事，点按展开`
+                          : `${b.e.title}，${b.e.categoryLabel}，${b.e.sourceCount} 个来源，评分 ${b.e.score}`
+                      }
+                      onMouseEnter={() => {
+                        if (pointerType.current === "touch") return;
+                        armHover(b.e.id);
+                        setOpenCluster(b.clusterId);
+                      }}
+                      onMouseLeave={() => {
+                        if (pointerType.current === "touch") return;
+                        armHover(null);
+                      }}
+                      onFocus={() => (setHovered(b.e.id), b.clusterId && setOpenCluster(b.clusterId))}
                       onBlur={() => setHovered((h) => (h === b.e.id ? null : h))}
                       onPointerDown={(ev) => (pointerType.current = ev.pointerType)}
                       onClick={() => {
                         if (drag.current?.moved || !star) return;
+                        if (b.count > 1 && openCluster !== b.clusterId) {
+                          setOpenCluster(b.clusterId);
+                          if (pointerType.current !== "touch") setHovered(b.e.id);
+                          return;
+                        }
                         if (pointerType.current === "touch") {
                           setSheet(b.e.id);
                           setHovered(b.e.id);
@@ -592,9 +654,28 @@ export function Sky({
                         star && freshIds.has(b.e.id) && "star-new",
                         !visible && "pointer-events-none",
                         entering && "star-enter",
+                        b.clusterId === openCluster && "z-20",
                       )}
-                      style={{ left: b.x, top: b.y, width: d, height: d, opacity, animationDelay: entering ? `${Math.round(b.u * ENTER_MS)}ms` : undefined, boxShadow: glow ? `0 0 ${glow}px ${glow / 3}px color-mix(in oklab, var(--fg) 30%, transparent)` : undefined }}
-                    />
+                      style={{
+                        left: b.x,
+                        top: b.y,
+                        width: d,
+                        height: d,
+                        opacity,
+                        animationDelay: entering ? `${Math.round(b.u * ENTER_MS)}ms` : undefined,
+                        boxShadow: [ring, bloom].filter(Boolean).join(", ") || undefined,
+                      }}
+                    >
+                      {b.count > 1 && b.clusterId !== openCluster && (
+                        <span
+                          aria-hidden
+                          className="absolute flex size-4 items-center justify-center rounded-full border border-line bg-bg font-mono text-[10px] text-fg"
+                          style={{ left: "68%", top: "68%" }}
+                        >
+                          {b.count}
+                        </span>
+                      )}
+                    </button>
                   );
                 })}
 
@@ -613,7 +694,7 @@ export function Sky({
                 ))}
           </div>
 
-          {!sheet && hoveredBody && isVisible(hoveredBody) && hoveredBody.e.selected && (
+          {!coarse && !sheet && hoveredBody && isVisible(hoveredBody) && hoveredBody.e.selected && (
             <div
               onMouseEnter={() => armHover(hoveredBody.e.id)}
               onMouseLeave={() => armHover(null)}
@@ -631,6 +712,7 @@ export function Sky({
               <p className="mt-2 text-[11px] text-faint">
                 共振 {hoveredBody.heat.toFixed(1)} · 点击聚焦 · ← → 切换
               </p>
+              {hoveredBody.count > 1 && <p className="mt-1 text-[11px] text-faint">同处 {hoveredBody.count} 件事，点其中一个打开</p>}
               {links.length > 0 && <p className="mt-1 text-[11px] text-faint">实线：同一信源报道 · 虚线：同一领域</p>}
             </div>
           )}
