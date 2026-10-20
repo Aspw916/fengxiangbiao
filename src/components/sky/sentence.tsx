@@ -30,9 +30,9 @@ export function SentenceSky({
 }) {
   const { words, parts } = splitSentence(lead.title);
   return (
-    <div className={`pointer-events-none absolute inset-x-0 z-20 px-5 sm:px-16 ${open ? "top-24 sm:top-28" : "top-[22%] sm:top-[18%]"}`}>
+    <div className={`pointer-events-none absolute inset-x-0 z-20 px-6 sm:px-16 ${open ? "top-48 sm:top-28" : "top-48 sm:top-[18%]"}`}>
       <p className="text-center text-xs tracking-[0.28em] text-faint">今天值得停下来的是</p>
-      <div className={`mx-auto mt-3 max-w-4xl text-center leading-snug font-medium ${open ? "text-lg text-dim sm:text-xl" : "text-[28px] sm:text-[40px]"}`}>
+      <div className={`mx-auto mt-3 max-w-4xl text-center font-medium ${open ? "truncate text-sm leading-none text-dim sm:text-base" : "text-[26px] leading-snug sm:text-[40px]"}`}>
         {parts.map((part, i) =>
           part.word ? (
             <button

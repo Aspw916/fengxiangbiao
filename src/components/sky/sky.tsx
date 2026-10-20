@@ -136,7 +136,8 @@ export function Sky({
   );
   const portrait = size.h > size.w * 1.1;
   const compact = size.w < 720;
-  const pad = portrait ? { l: 36, r: 28, t: 168, b: 200 } : { l: compact ? 64 : 104, r: compact ? 40 : 150, t: 172, b: 176 };
+  const lensRail = sentence === "off" && !portrait && !compact;
+  const pad = portrait ? { l: 36, r: 28, t: 228, b: 200 } : { l: compact ? 64 : lensRail ? 188 : 104, r: compact ? 40 : 150, t: 172, b: 176 };
   const areaW = Math.max(0, size.w - pad.l - pad.r);
   const areaH = Math.max(0, size.h - pad.t - pad.b);
   const scale = compact ? 0.62 : 1;
@@ -495,6 +496,16 @@ export function Sky({
   const focusSlides = focusOrder.map((e) => ({ kind: "event" as const, e }));
   const focusIndex = focusId ? Math.max(0, focusOrder.findIndex((e) => e.id === focusId)) : 0;
   const hoveredBody = bodies.find((b) => b.e.id === hovered);
+  const whySubject =
+    sentenceMode === "off"
+      ? (hoveredBody && isVisible(hoveredBody) && lensMatches(hoveredBody.e, lens) ? hoveredBody : null) ??
+        bodies
+          .filter((b) => b.e.selected && isVisible(b) && lensMatches(b.e, lens))
+          .sort((a, b) => b.heat - a.heat)[0] ??
+        null
+      : null;
+  const whyText = whySubject ? lensWhy(whySubject.e, lens) : null;
+  const whyLine = whySubject && whyText ? `「${whySubject.e.title}」落在这面，${whyText}` : null;
   const links = useMemo(() => {
     if (!hoveredBody?.e.selected) return [];
     const mine = new Set(hoveredBody.e.reports.map((r) => r.source));
@@ -537,6 +548,7 @@ export function Sky({
             {officialOnly && " · 仅一手"}
             {sentenceMode === "off" && ` · ${lensByKey(lens).label}`}
           </p>
+          {whyLine && <p data-why className="mt-1 line-clamp-1 max-w-[16rem] text-[11px] leading-relaxed text-dim sm:line-clamp-2 sm:max-w-sm">{whyLine}</p>}
           <RefreshControl generatedAt={generatedAt} mode={mode} now={now} />
           {fresh.length > 0 && !lastSky && sentenceMode === "off" && (
             <button
@@ -662,10 +674,10 @@ export function Sky({
                     aria-pressed={on}
                     onClick={() => setLens(item.key)}
                     className={cn(
-                      "absolute left-4 -translate-y-1/2 rounded-full px-2.5 py-1 text-left text-[12px] sm:left-6",
+                      "absolute left-3 -translate-y-1/2 truncate rounded-full px-2.5 py-1 text-left text-[12px]",
                       on ? "bg-fg text-bg" : "text-faint hover:text-fg",
                     )}
-                    style={{ top: pos }}
+                    style={{ top: pos, width: Math.max(96, pad.l - 64) }}
                   >
                     {item.label}
                   </button>
@@ -1026,8 +1038,6 @@ export function Sky({
           </div>
         </div>
 
-      </div>
-
         {lead && sentenceMode !== "off" && (
         <SentenceSky
           lead={lead}
@@ -1048,6 +1058,7 @@ export function Sky({
           onSky={() => setSentence("off")}
         />
       )}
+      </div>
 
         {sheet && !focusId && (() => {
           const b = bodies.find((x) => x.e.id === sheet);

@@ -41,9 +41,10 @@ function blob(e: SkyEvent) {
 /** 命中则返回可展示的原因；未命中返回 null，调用方不要放进这面透镜。 */
 export function lensWhy(e: SkyEvent, key: LensKey): string | null {
   const lens = lensByKey(key);
-  const text = blob(e);
-  const word = lens.words.find((item) => text.includes(item));
-  if (word) return `因为摘要里写了「${word}」`;
+  const inTitle = lens.words.find((item) => e.title.includes(item));
+  if (inTitle) return `因为标题里写了「${inTitle}」`;
+  const inBody = lens.words.find((item) => `${e.digest} ${e.reason}`.includes(item));
+  if (inBody) return `因为摘要里写了「${inBody}」`;
   if (lens.categories.includes(e.category)) return `因为原来在「${e.categoryLabel}」`;
   return null;
 }
