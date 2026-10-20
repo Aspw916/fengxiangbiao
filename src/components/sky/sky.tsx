@@ -8,14 +8,15 @@ import { Minus, Pause, Play, Plus, RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScoreBadge } from "@/components/score-badge";
 import { axisTime, axisU, BANDS, heatAt, matches, RANGE_H, type SkyEvent } from "@/lib/sky";
+import { fullestLens, LENSES, lensByKey, lensMatches, lensWhy, mentions, sentenceWords, type LensKey } from "@/lib/lenses";
 import { FocusReel } from "./focus-reel";
 import { RefreshControl } from "./refresh-control";
-import { useLastVisit } from "./use-last-visit";
+import { SentenceSky } from "./sentence";
+import { stageSkyIds, useLastSky } from "./use-last-visit";
 import { DensityTrack } from "./density-track";
 import { Minimap } from "./minimap";
 import { fanAround, separateStars } from "./separate";
 import { StarSheet } from "./star-sheet";
-import { relTime } from "@/lib/format";
 
 const PLAY_MS = 9000;
 const CLOCK_MS = 15_000;
@@ -25,7 +26,7 @@ const LINK_SHARED_MAX = 3;
 const LINK_TOPIC_MAX = 2;
 const MINIMAP_AT = 1.5;
 const MAX_ZOOM = 4;
-const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；双击复位。键盘：← → 按时间、↑ ↓ 按热度切换事件，回车打开";
+const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；双击复位。键盘：← → 按时间、↑ ↓ 按热度，回车打开，1–4 换透镜，[ ] 拖动那时和现在";
 
 function hm(t: number) {
   return new Date(t + 8 * 3600_000).toISOString().slice(11, 16);
@@ -117,6 +118,12 @@ export function Sky({
   const [sheet, setSheet] = useState<string | null>(null);
   const [openCluster, setOpenCluster] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
+  const [fallFrom, setFallFrom] = useState({ x: 0, y: 140 });
+  const lastSky = useLastSky();
+  const [sentence, setSentence] = useState<"cover" | "open" | "off">(initialFocus ? "off" : "cover");
+  const [word, setWord] = useState<string | null>(null);
+  const [lens, setLens] = useState<LensKey>(() => fullestLens(events));
+  const [cut, setCut] = useState(0.5);
 
   const coarse = useSyncExternalStore(
     (onChange) => {
@@ -134,12 +141,23 @@ export function Sky({
   const areaH = Math.max(0, size.h - pad.t - pad.b);
   const scale = compact ? 0.62 : 1;
   const inRange = useMemo(() => events.filter((e) => e.first >= start - 6 * 3600_000), [events, start]);
+  const lensOn = sentence === "off";
+  const lead = useMemo(() => {
+    const pool = inRange.filter((e) => e.selected && e.first >= start);
+    return [...pool].sort((a, b) => {
+      const weight = (e: SkyEvent) => Math.max(heatAt(e, now), 0.2) * (1 + e.sourceCount) * e.score;
+      return weight(b) - weight(a);
+    })[0] ?? null;
+  }, [inRange, start, now]);
+  const sentenceMode = lead ? sentence : "off";
 
   const bodies = useMemo(() => {
-    const pitch = Math.max(1, (portrait ? areaW : areaH) / BANDS.length);
+    const bandCount = lensOn ? LENSES.length : BANDS.length;
+    const lane = lensOn ? Math.max(0, LENSES.findIndex((item) => item.key === lens)) : null;
+    const pitch = Math.max(1, (portrait ? areaW : areaH) / bandCount);
     const raw = inRange.map((e) => {
       const u = axisU(e.first, now);
-      const v = (e.band + 0.5) / BANDS.length;
+      const v = ((lane ?? e.band) + 0.5) / bandCount;
       const [nx, ny] = portrait ? [v, u] : [u, v];
       const x = pad.l + nx * areaW;
       const y = pad.t + ny * areaH;
@@ -150,7 +168,9 @@ export function Sky({
     const maxHeat = Math.max(1, ...raw.map((b) => b.heat));
     const radius = (heat: number) => ((8 + Math.sqrt(heat / maxHeat) * 46) * scale) / 2;
     const placed = separateStars(
-      raw.filter((b) => b.lit && b.e.selected && (!officialOnly || b.official)).map((b) => ({ id: b.e.id, x: b.x, y: b.y, r: radius(b.heat), band: b.e.band, priority: b.heat })),
+      raw
+        .filter((b) => b.lit && b.e.selected && (!officialOnly || b.official) && (!lensOn || lensMatches(b.e, lens)))
+        .map((b) => ({ id: b.e.id, x: b.x, y: b.y, r: radius(b.heat), band: lensOn ? (lane ?? 0) : b.e.band, priority: b.heat })),
       { timeAxis: portrait ? "y" : "x", pitch },
     );
     const byId = new Map(placed.map((p) => [p.id, p]));
@@ -174,11 +194,29 @@ export function Sky({
       }
     }
     return laid;
-  }, [inRange, now, portrait, t, pad.l, pad.t, areaW, areaH, scale, officialOnly, openCluster, compact, size.w, size.h]);
+  }, [inRange, now, portrait, t, pad.l, pad.t, areaW, areaH, scale, officialOnly, openCluster, compact, size.w, size.h, lensOn, lens]);
+
+  const isThen = useCallback(
+    (e: SkyEvent) => {
+      if (!lastSky) return false;
+      return lastSky.ids ? lastSky.ids.includes(e.id) : e.first <= lastSky.at;
+    },
+    [lastSky],
+  );
 
   const isVisible = useCallback(
-    (b: (typeof bodies)[number]) => b.lit && (b.e.selected || showDust) && (!officialOnly || b.official),
-    [showDust, officialOnly],
+    (b: (typeof bodies)[number]) => {
+      if (sentenceMode === "cover") return false;
+      if (!b.lit || !(b.e.selected || showDust) || (officialOnly && !b.official)) return false;
+      if (sentenceMode === "open" && word && !mentions(b.e, word)) return false;
+      if (sentenceMode === "off" && !lensMatches(b.e, lens)) return false;
+      if (sentenceMode === "off" && lastSky && cut < 0.98) {
+        const onNowSide = axisU(b.e.first, now) >= cut;
+        if (!onNowSide && !isThen(b.e)) return false;
+      }
+      return true;
+    },
+    [sentenceMode, showDust, officialOnly, word, lens, lastSky, cut, now, isThen],
   );
 
   const q = query.startsWith("/") ? "" : query;
@@ -188,15 +226,17 @@ export function Sky({
   );
   const focusOrder = ranked.length ? ranked.map((b) => b.e) : events.filter((e) => e.selected);
 
-  const lastVisit = useLastVisit();
   const [initialIds] = useState(() => new Set(events.map((e) => e.id)));
   const fresh = useMemo(
     () =>
       events
-        .filter((e) => e.selected && ((lastVisit !== null && e.first > lastVisit) || !initialIds.has(e.id)))
+        .filter((e) => e.selected && ((lastSky !== null && e.first > lastSky.at) || !initialIds.has(e.id)))
         .sort((a, b) => b.first - a.first),
-    [events, lastVisit, initialIds],
+    [events, lastSky, initialIds],
   );
+  useEffect(() => {
+    stageSkyIds(inRange.filter((e) => e.selected).map((e) => e.id));
+  }, [inRange]);
   const freshIds = useMemo(() => new Set(fresh.map((e) => e.id)), [fresh]);
   const caption = playing ? inRange.reduce<SkyEvent | null>((acc, e) => (e.selected && e.first <= t && (!acc || e.first > acc.first) ? e : acc), null) : null;
   const maxHeat = Math.max(1, ...bodies.map((b) => b.heat));
@@ -268,6 +308,8 @@ export function Sky({
   }, [playing, playEnd, setT]);
 
   const commands: Command[] = [
+    { cmd: "/一句", hint: "回到今天的那句话", run: () => (setSentence("cover"), setWord(null)) },
+    { cmd: "/透镜", hint: "换到下一面决策透镜", run: () => setLens(LENSES[(LENSES.findIndex((item) => item.key === lens) + 1) % LENSES.length].key) },
     { cmd: "/回放", hint: "重演最近 72 小时", run: play },
     { cmd: "/现在", hint: "回到当前时间", run: () => (setPlaying(false), setT(null)) },
     { cmd: "/日报", hint: "放映今天的日报", run: () => router.push("/edition") },
@@ -299,6 +341,49 @@ export function Sky({
     const onKey = (ev: KeyboardEvent) => {
       const tag = (ev.target as HTMLElement).tagName;
       if (focusId || tag === "INPUT" || tag === "TEXTAREA" || ev.metaKey || ev.ctrlKey) return;
+      if (sentenceMode !== "off") {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          if (sentenceMode === "open") {
+            setSentence("cover");
+            setWord(null);
+          } else setSentence("off");
+          return;
+        }
+        if (sentenceMode === "cover") {
+          const words = lead ? sentenceWords(lead.title) : [];
+          if ((ev.key === "ArrowLeft" || ev.key === "ArrowRight") && words.length) {
+            ev.preventDefault();
+            const at = Math.max(0, words.indexOf(word ?? words[0]));
+            const step = ev.key === "ArrowRight" ? 1 : -1;
+            const next = words[(at + step + words.length) % words.length];
+            setWord(next);
+            document.querySelector<HTMLElement>(`[data-sentence-word="${next}"]`)?.focus();
+            return;
+          }
+          if (ev.key === "Enter" && tag !== "BUTTON") {
+            ev.preventDefault();
+            if (words.length) {
+              setWord(word && words.includes(word) ? word : words[0]);
+              setSentence("open");
+            } else setSentence("off");
+            return;
+          }
+          if (ev.key !== "/") return;
+        }
+      } else {
+        if (ev.key === "[" || ev.key === "]") {
+          if (!lastSky) return;
+          ev.preventDefault();
+          setCut((value) => Math.min(1, Math.max(0.08, value + (ev.key === "]" ? 0.06 : -0.06))));
+          return;
+        }
+        if (/^[1-4]$/.test(ev.key)) {
+          ev.preventDefault();
+          setLens(LENSES[Number(ev.key) - 1].key);
+          return;
+        }
+      }
       if (ev.key === "/") {
         ev.preventDefault();
         inputRef.current?.focus();
@@ -329,7 +414,7 @@ export function Sky({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [focusId, playing, play, ranked, openFocus, hovered, view.k, size.w, size.h, bodies]);
+  }, [focusId, playing, play, ranked, openFocus, hovered, view.k, size.w, size.h, bodies, sentenceMode, lead, word, lastSky]);
 
   useEffect(() => {
     document.documentElement.style.overflow = "hidden";
@@ -447,18 +532,20 @@ export function Sky({
           </p>
           <p className="mt-1 font-mono text-xl tabular-nums sm:text-2xl">{stamp(t)}</p>
           <p className="mt-1 text-xs text-dim">
-            {ranked.length} 件事在发光{q && ` · 匹配“${q}”`}
+            {sentenceMode === "cover" ? "先读完这一句" : sentenceMode === "open" ? `${ranked.length} 件和「${word}」有关` : `${ranked.length} 件事在发光`}
+            {q && sentenceMode === "off" && ` · 匹配“${q}”`}
             {officialOnly && " · 仅一手"}
+            {sentenceMode === "off" && ` · ${lensByKey(lens).label}`}
           </p>
           <RefreshControl generatedAt={generatedAt} mode={mode} now={now} />
-          {fresh.length > 0 && (
+          {fresh.length > 0 && !lastSky && sentenceMode === "off" && (
             <button
               type="button"
               onClick={() => (setT(null), openFocus(fresh[0].id))}
               className="fade-in pointer-events-auto mt-2 inline-flex items-center gap-1.5 rounded-full bg-fg px-2.5 py-1 text-xs font-medium text-bg hover:opacity-90"
             >
               <span className="size-1.5 rounded-full bg-bg" aria-hidden />
-              {lastVisit !== null && fresh.some((e) => initialIds.has(e.id)) ? `上次来是${relTime(new Date(lastVisit).toISOString(), now)} · 之后新增 ${fresh.length} 件事` : `刚刚新增 ${fresh.length} 件事`}
+              {`刚刚新增 ${fresh.length} 件事`}
               <span aria-hidden>→</span>
             </button>
           )}
@@ -561,18 +648,27 @@ export function Sky({
                 );
               })}
             {size.w > 0 &&
-              BANDS.map((b, i) => {
-                const v = (i + 0.5) / BANDS.length;
-                const pos = portrait ? pad.l + v * areaW : pad.t + v * areaH;
+              sentenceMode === "off" &&
+              !(compact || coarse || portrait) &&
+              LENSES.map((item, i) => {
+                const v = (i + 0.5) / LENSES.length;
+                const pos = pad.t + v * areaH;
+                const on = item.key === lens;
                 return (
-                  <span
-                    key={b.key}
-                    aria-hidden
-                    className={cn("absolute text-[11px] tracking-widest text-faint/70", portrait ? "-translate-x-1/2" : "left-4 -translate-y-1/2 sm:left-8")}
-                    style={portrait ? { left: pos, top: pad.t - 40 } : { top: pos }}
+                  <button
+                    key={item.key}
+                    type="button"
+                    data-lens={item.key}
+                    aria-pressed={on}
+                    onClick={() => setLens(item.key)}
+                    className={cn(
+                      "absolute left-4 -translate-y-1/2 rounded-full px-2.5 py-1 text-left text-[12px] sm:left-6",
+                      on ? "bg-fg text-bg" : "text-faint hover:text-fg",
+                    )}
+                    style={{ top: pos }}
                   >
-                    {b.label}
-                  </span>
+                    {item.label}
+                  </button>
                 );
               })}
 
@@ -597,9 +693,12 @@ export function Sky({
               [...bodies]
                 .sort((a, b) => a.heat - b.heat)
                 .map((b) => {
+                  if (sentenceMode === "cover") return null;
+                  if (sentenceMode === "off" && !lensMatches(b.e, lens)) return null;
                   const visible = isVisible(b);
                   const piled = b.role === "member" && b.clusterId !== openCluster;
                   if (piled) return null;
+                  const hollow = sentenceMode === "off" && Boolean(lastSky) && cut < 0.98 && isThen(b.e);
                   const match = !q || matches(b.e, q);
                   const star = b.e.selected;
                   const d = star ? b.r * 2 : 3;
@@ -607,11 +706,12 @@ export function Sky({
                   const apart = Boolean(openCluster && b.clusterId !== openCluster);
                   const opacity = !visible ? 0 : !match ? 0.08 : star ? (0.78 + (b.e.score / 100) * 0.22) * (apart ? 0.28 : 1) : 0.25;
                   const recent = star && t - b.e.first < 6 * 3600_000 && t >= b.e.first;
-                  const ring = star ? "0 0 0 1.5px var(--bg)" : "";
-                  const bloom = glow ? `0 0 ${glow}px ${glow / 3}px color-mix(in oklab, var(--fg) 28%, transparent)` : "";
+                  const ring = star && !hollow ? "0 0 0 1.5px var(--bg)" : "";
+                  const bloom = !hollow && glow ? `0 0 ${glow}px ${glow / 3}px color-mix(in oklab, var(--fg) 28%, transparent)` : "";
+                  const hollowRing = hollow ? "inset 0 0 0 1.5px var(--fg)" : "";
                   return (
                     <button
-                      key={b.e.id}
+                      key={sentenceMode === "open" ? `${b.e.id}-${word}` : b.e.id}
                       data-star={b.e.id}
                       type="button"
                       tabIndex={visible && star ? 0 : -1}
@@ -649,11 +749,12 @@ export function Sky({
                       }}
                       className={cn(
                         "star absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-fg focus-visible:ring-offset-4 focus-visible:ring-offset-bg",
-                        star ? "bg-fg" : "pointer-events-none bg-dim",
-                        recent && !reduced && "star-pulse",
-                        star && freshIds.has(b.e.id) && "star-new",
+                        hollow ? "bg-transparent" : star ? "bg-fg" : "pointer-events-none bg-dim",
+                        recent && !reduced && !hollow && "star-pulse",
+                        star && freshIds.has(b.e.id) && !hollow && "star-new",
                         !visible && "pointer-events-none",
-                        entering && "star-enter",
+                        entering && sentenceMode === "off" && "star-enter",
+                        sentenceMode === "open" && !reduced && "star-fall",
                         b.clusterId === openCluster && "z-20",
                       )}
                       style={{
@@ -661,9 +762,11 @@ export function Sky({
                         top: b.y,
                         width: d,
                         height: d,
-                        opacity,
+                        opacity: hollow ? Math.min(opacity, 0.72) : opacity,
                         animationDelay: entering ? `${Math.round(b.u * ENTER_MS)}ms` : undefined,
-                        boxShadow: [ring, bloom].filter(Boolean).join(", ") || undefined,
+                        boxShadow: [hollowRing, ring, bloom].filter(Boolean).join(", ") || undefined,
+                        ["--fall-x" as string]: `${fallFrom.x}px`,
+                        ["--fall-y" as string]: `${fallFrom.y}px`,
                       }}
                     >
                       {b.count > 1 && b.clusterId !== openCluster && (
@@ -692,6 +795,45 @@ export function Sky({
                     {l.title}
                   </span>
                 ))}
+          {sentenceMode === "off" && lastSky && !(compact || coarse || portrait) && view.k === 1 && (
+            <div
+              data-exposure
+              role="slider"
+              tabIndex={0}
+              aria-label="那时和现在的分界"
+              aria-valuemin={8}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(cut * 100)}
+              aria-valuetext={cut >= 0.98 ? "现在，今天的天空" : "左边是上次离开时，右边是现在"}
+              onKeyDown={(ev) => {
+                if (ev.key === "ArrowLeft" || ev.key === "ArrowRight") {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  setCut((value) => Math.min(1, Math.max(0.08, value + (ev.key === "ArrowRight" ? 0.04 : -0.04))));
+                }
+              }}
+              className="absolute top-16 bottom-28 z-30 w-8 -translate-x-1/2 cursor-ew-resize"
+              style={{ left: pad.l + cut * areaW }}
+              onPointerDown={(ev) => {
+                ev.stopPropagation();
+                const move = (e: PointerEvent) => {
+                  const rect = fieldRef.current?.getBoundingClientRect();
+                  if (!rect) return;
+                  const next = (e.clientX - rect.left - pad.l) / Math.max(1, areaW);
+                  setCut(Math.min(1, Math.max(0.08, next)));
+                };
+                const up = () => {
+                  window.removeEventListener("pointermove", move);
+                  window.removeEventListener("pointerup", up);
+                };
+                window.addEventListener("pointermove", move);
+                window.addEventListener("pointerup", up);
+              }}
+            >
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 rounded-full bg-fg px-2 py-0.5 text-[10px] whitespace-nowrap text-bg">那时 | 现在</span>
+              <span className="absolute top-7 bottom-0 left-1/2 w-px -translate-x-1/2 bg-fg/80" />
+            </div>
+          )}
           </div>
 
           {!coarse && !sheet && hoveredBody && isVisible(hoveredBody) && hoveredBody.e.selected && (
@@ -709,6 +851,9 @@ export function Sky({
                 <ScoreBadge score={hoveredBody.e.score} official={hoveredBody.official} selected={hoveredBody.e.selected} embed />
               </div>
               <p className="mt-1 text-sm leading-snug font-medium">{hoveredBody.e.title}</p>
+              {sentenceMode === "off" && lensWhy(hoveredBody.e, lens) && (
+                <p className="mt-2 text-[11px] leading-relaxed text-dim">落在「{lensByKey(lens).label}」，{lensWhy(hoveredBody.e, lens)}</p>
+              )}
               <p className="mt-2 text-[11px] text-faint">
                 共振 {hoveredBody.heat.toFixed(1)} · 点击聚焦 · ← → 切换
               </p>
@@ -730,6 +875,41 @@ export function Sky({
 
         <div className="absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-bg via-bg/90 to-transparent px-4 pt-10 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto max-w-2xl">
+            {sentenceMode === "off" && (compact || coarse || portrait) && (
+              <div className="mb-2 flex gap-1.5 overflow-x-auto" role="group" aria-label="决策透镜">
+                {LENSES.map((item, i) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    data-lens={item.key}
+                    aria-pressed={item.key === lens}
+                    aria-keyshortcuts={String(i + 1)}
+                    onClick={() => setLens(item.key)}
+                    className={cn("shrink-0 rounded-full px-3 py-1.5 text-[13px]", item.key === lens ? "bg-fg text-bg" : "text-faint")}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {sentenceMode === "off" && lastSky && (compact || coarse || portrait) && (
+              <label className="mb-2 flex items-center gap-3 text-[11px] text-faint">
+                那时
+                <input
+                  data-exposure
+                  type="range"
+                  className="scrubber min-w-0 flex-1"
+                  min={0.08}
+                  max={1}
+                  step={0.01}
+                  value={cut}
+                  onChange={(ev) => setCut(Number(ev.target.value))}
+                  aria-label="那时和现在"
+                  aria-valuetext={cut >= 0.98 ? "现在" : "那时和现在之间"}
+                />
+                现在
+              </label>
+            )}
             <div className="pointer-events-none absolute inset-x-0 -top-1 overflow-hidden px-4 text-center text-xs text-dim" aria-live="polite">
               {caption && (
                 <p key={caption.id} className="fade-in truncate">
@@ -848,17 +1028,43 @@ export function Sky({
 
       </div>
 
+        {lead && sentenceMode !== "off" && (
+        <SentenceSky
+          lead={lead}
+          open={sentenceMode === "open"}
+          active={word}
+          onPick={(next, el) => {
+            const field = fieldRef.current?.getBoundingClientRect();
+            const rect = el.getBoundingClientRect();
+            if (field) setFallFrom({ x: rect.left - field.left + rect.width / 2, y: rect.top - field.top + rect.height / 2 });
+            if (word === next && sentenceMode === "open") {
+              setSentence("cover");
+              setWord(null);
+              return;
+            }
+            setWord(next);
+            setSentence("open");
+          }}
+          onSky={() => setSentence("off")}
+        />
+      )}
+
         {sheet && !focusId && (() => {
           const b = bodies.find((x) => x.e.id === sheet);
           if (!b) return null;
           const close = () => (setSheet(null), setHovered(null));
-          return <StarSheet e={b.e} heat={b.heat} onClose={close} onOpen={() => (close(), openFocus(b.e.id))} />;
+          const why = sentenceMode === "off" ? lensWhy(b.e, lens) : null;
+          return <StarSheet e={b.e} heat={b.heat} why={why ? `落在「${lensByKey(lens).label}」，${why}` : null} onClose={close} onOpen={() => (close(), openFocus(b.e.id))} />;
         })()}
 
         {focusId && focusSlides.length > 0 && (
           <FocusReel
             slides={focusSlides}
             initial={focusIndex}
+            noteFor={sentenceMode === "off" ? (e) => {
+              const why = lensWhy(e, lens);
+              return why ? `落在「${lensByKey(lens).label}」，${why}` : null;
+            } : undefined}
             onClose={closeFocus}
             onChange={(i) => {
               const id = focusOrder[i]?.id;

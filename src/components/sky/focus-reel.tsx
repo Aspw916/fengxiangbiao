@@ -62,7 +62,7 @@ function Ignition({ e }: { e: SkyEvent }) {
 
 const STATUS_TEXT: Record<SkyEvent["status"], string> = { new: "刚出现", rising: "正在升温", cooling: "正在降温", steady: "" };
 
-function EventSlide({ e }: { e: SkyEvent }) {
+function EventSlide({ e, why }: { e: SkyEvent; why?: string | null }) {
   return (
     <article>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-faint">
@@ -74,6 +74,7 @@ function EventSlide({ e }: { e: SkyEvent }) {
       <h2 className="mt-4 text-[34px] leading-[1.15] font-semibold tracking-tight text-balance sm:text-6xl sm:leading-[1.08]">{e.title}</h2>
       <p className="mt-6 max-w-2xl text-lg leading-8 text-dim">{e.digest}</p>
       {e.reason && <p className="mt-4 max-w-2xl text-[15px] leading-7 text-dim"><span className="text-fg">为什么重要 · </span>{e.reason}</p>}
+      {why && <p className="mt-3 max-w-2xl text-sm leading-7 text-dim">{why}</p>}
       <Ignition e={e} />
     </article>
   );
@@ -98,6 +99,7 @@ export function FocusReel({
   onClose,
   closeHref,
   onChange,
+  noteFor,
   top,
   label = "聚焦",
 }: {
@@ -106,6 +108,7 @@ export function FocusReel({
   onClose?: () => void;
   closeHref?: string;
   onChange?: (index: number) => void;
+  noteFor?: (e: SkyEvent) => string | null;
   top?: React.ReactNode;
   label?: string;
 }) {
@@ -199,7 +202,7 @@ export function FocusReel({
 
       <div ref={scroller} className="flex-1 overflow-y-auto">
         <div key={index} className={cn("mx-auto max-w-4xl px-6 pt-8 pb-16 sm:px-10 sm:pt-16", dir > 0 ? "slide-in-right" : "slide-in-left")}>
-          {slide.kind === "event" ? <EventSlide e={slide.e} /> : <CoverSlide s={slide} />}
+          {slide.kind === "event" ? <EventSlide e={slide.e} why={noteFor?.(slide.e)} /> : <CoverSlide s={slide} />}
         </div>
       </div>
 
