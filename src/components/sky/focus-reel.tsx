@@ -29,7 +29,7 @@ function Ignition({ e }: { e: SkyEvent }) {
   return (
     <div className="mt-10">
       <div className="mb-3 flex items-baseline justify-between text-xs text-faint">
-        <span>点火时间线 · {e.reports.length} 篇报道 · {e.sourceCount} 个来源</span>
+        <span>谁在什么时候报道 · {e.sourceCount} 个来源</span>
         <span className="font-mono">{clockOf(start)} → {clockOf(end)}</span>
       </div>
       <div className="relative h-10" aria-hidden>

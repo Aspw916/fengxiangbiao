@@ -62,7 +62,7 @@ export function Header({ index, demo }: { index: SearchEntry[]; demo: boolean })
         </div>
 
         <nav className="flex items-center gap-0.5" aria-label="主导航">
-          {NAV.slice(1).map(({ href, label, icon: Icon }) => (
+          {NAV.slice(1).map(({ href, label }) => (
             <Link
               key={href}
               href={href}
@@ -73,8 +73,7 @@ export function Header({ index, demo }: { index: SearchEntry[]; demo: boolean })
                 isActive(pathname, href) ? "bg-raised text-fg" : "text-dim hover:text-fg",
               )}
             >
-              <Icon className="size-4 sm:hidden" strokeWidth={1.75} />
-              <span className="hidden sm:inline">{label}</span>
+              <span>{label}</span>
             </Link>
           ))}
         </nav>
@@ -86,8 +85,7 @@ export function Header({ index, demo }: { index: SearchEntry[]; demo: boolean })
             aria-label="搜索事件"
           >
             <Search className="size-3.5" />
-            <span className="hidden lg:inline">跳转</span>
-            <kbd className="hidden font-mono text-[11px] text-faint lg:inline">⌘K</kbd>
+            <span className="hidden sm:inline">搜索</span>
           </button>
           <button
             onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}

@@ -36,7 +36,7 @@ export function ScoreBadge({
       <span className="mt-1.5 text-[10px] leading-none text-faint">{grade}</span>
     </span>
   ) : (
-    <>评分 {score} · {grade}</>
+    <>{grade} · 内容分 {score}</>
   );
   const triggerClass = cn(
     "cursor-help text-left underline decoration-dotted decoration-from-font underline-offset-4 outline-none hover:text-fg focus-visible:text-fg",
@@ -46,7 +46,7 @@ export function ScoreBadge({
   if (embed) {
     return (
       <span onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
-        <button type="button" className={triggerClass} aria-expanded={open} aria-label={`评分 ${score}，${grade}。查看评分说明`} onClick={() => setOpen((v) => !v)}>
+        <button type="button" className={triggerClass} aria-expanded={open} aria-label={`${grade}，内容分 ${score}。内容分看这件事值不值得花时间`} onClick={() => setOpen((v) => !v)}>
           {label}
         </button>
         {open && (
@@ -63,7 +63,7 @@ export function ScoreBadge({
         openOnHover
         delay={150}
         className={triggerClass}
-        aria-label={`评分 ${score}，${grade}。查看评分说明`}
+        aria-label={`${grade}，内容分 ${score}。内容分看这件事值不值得花时间`}
       >
         {label}
       </PopoverTrigger>
