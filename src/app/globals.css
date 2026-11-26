@@ -139,7 +139,8 @@
   .slide-in-left {
     animation: slide-in-left 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
-  .star {
+  .star,
+  .star-anchor {
     transition:
       left 0.45s ease,
       top 0.45s ease,
@@ -147,6 +148,12 @@
       height 0.45s ease,
       opacity 0.35s ease,
       box-shadow 0.45s ease;
+  }
+  .star.star-stage,
+  .star-anchor.star-stage {
+    background: transparent;
+    box-shadow: none;
+    transition: opacity 0.35s ease;
   }
   .star-pulse::after {
     content: "";
@@ -208,8 +215,21 @@
 @keyframes link-in {
   from { opacity: 0; }
 }
-.sky-playing .star {
+.sky-playing .star,
+.sky-playing .star-anchor {
   transition: none;
+}
+@keyframes orbit-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes orbit-spin-rev {
+  to { transform: rotate(-360deg); }
+}
+.tone-dot {
+  animation: tone-dot 1.4s ease-in-out infinite;
+}
+@keyframes tone-dot {
+  50% { opacity: 0.3; }
 }
 .star-new::before {
   content: "";
@@ -249,5 +269,6 @@
   }
   .ignite-row, .slide-in-right, .slide-in-left, .fade-in { transform: none; }
   .star-pulse::after, .star-new::before, .star-enter, .sheet-up, .link-draw { animation: none; }
-  .star { transition: none; }
+  .star, .star-anchor { transition: none; }
+  .orbit-arm, .orbit-label, .tone-dot { animation: none; }
 }

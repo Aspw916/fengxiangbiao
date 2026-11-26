@@ -89,6 +89,18 @@ export function heatAt(e: SkyEvent, t: number): number {
   return total;
 }
 
+/** 同一信源只留最早的一篇，轨道和卡片都用这份名单。 */
+export function sourcesOf(reports: SkyReport[]): SkyReport[] {
+  const out: SkyReport[] = [];
+  const seen = new Set<string>();
+  for (const report of reports) {
+    if (seen.has(report.source)) continue;
+    seen.add(report.source);
+    out.push(report);
+  }
+  return out;
+}
+
 export function matches(e: SkyEvent, q: string): boolean {
   const needle = q.trim().toLowerCase();
   if (!needle) return true;

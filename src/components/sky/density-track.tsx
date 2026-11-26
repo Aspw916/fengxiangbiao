@@ -17,7 +17,7 @@ export function DensityTrack({ events, now, t }: { events: SkyEvent[]; now: numb
     const max = Math.max(1, ...counts);
     const smooth = counts.map((_, i) => (counts[i - 1] ?? 0) * 0.25 + counts[i] * 0.5 + (counts[i + 1] ?? 0) * 0.25);
     const pts = smooth.map((c, i) => `${(i + 0.5).toFixed(2)},${(1 - (c / max) * 0.95).toFixed(3)}`);
-    return `M0,1 L${pts.join(" L")} L${BUCKETS},1 Z`;
+    return { area: `M0,1 L${pts.join(" L")} L${BUCKETS},1 Z`, crest: `M${pts.join(" L")}` };
   }, [events, now]);
   const u = axisU(t, now);
 
@@ -28,8 +28,10 @@ export function DensityTrack({ events, now, t }: { events: SkyEvent[]; now: numb
           <rect x={0} y={0} width={u * BUCKETS} height={1} />
         </clipPath>
       </defs>
-      <path d={path} className="fill-fg/10" />
-      <path d={path} className="fill-fg/30" clipPath={`url(#${clip})`} />
+      <path d={path.area} className="fill-fg/10" />
+      <path d={path.area} className="fill-fg/30" clipPath={`url(#${clip})`} />
+      <path d={path.crest} fill="none" strokeWidth={0.07} className="stroke-fg/25" />
+      <path d={path.crest} fill="none" strokeWidth={0.035} className="stroke-fg/70" clipPath={`url(#${clip})`} />
     </svg>
   );
 }

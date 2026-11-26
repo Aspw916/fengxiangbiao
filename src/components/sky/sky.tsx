@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { Minus, Pause, Play, Plus, RotateCcw, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScoreBadge } from "@/components/score-badge";
-import { axisTime, axisU, BANDS, heatAt, matches, RANGE_H, type SkyEvent } from "@/lib/sky";
+import { axisTime, axisU, BANDS, heatAt, matches, RANGE_H, sourcesOf, type SkyEvent } from "@/lib/sky";
 import { FocusReel } from "./focus-reel";
 import { RefreshControl } from "./refresh-control";
 import { useLastVisit } from "./use-last-visit";
@@ -16,6 +16,11 @@ import { Minimap } from "./minimap";
 import { fanAround, separateStars } from "./separate";
 import { StarSheet } from "./star-sheet";
 import { relTime } from "@/lib/format";
+import { constellationOf } from "./lens";
+import { SourceOrbits } from "./orbits";
+import { SkyWell, type Burst, type SkyScene } from "./sky-well";
+import { SkyStage, type StageScene, type StageStar } from "./stage";
+import { SkyTone } from "./tone";
 
 const PLAY_MS = 9000;
 const CLOCK_MS = 15_000;
@@ -62,7 +67,7 @@ function useReducedMotion() {
   );
 }
 
-type Command = { cmd: string; hint: string; run: () => void };
+type Command = { id: string; cmd: string; hint: string };
 
 export function Sky({
   events,
@@ -104,6 +109,11 @@ export function Sky({
   const [cursor, setCursor] = useState(0);
   const [officialOnly, setOfficialOnly] = useState(false);
   const [showDust, setShowDust] = useState(true);
+  const [lens, setLens] = useState(false);
+  const [showConstellation, setShowConstellation] = useState(true);
+  const [depth, setDepth] = useState(true);
+  const [glOk, setGlOk] = useState(true);
+  const [toneOn, setToneOn] = useState(false);
   const [hovered, setHovered] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(initialFocus ?? null);
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
@@ -112,11 +122,20 @@ export function Sky({
   const armHover = (id: string | null) => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     if (id) setHovered(id);
-    else hoverTimer.current = setTimeout(() => (setHovered(null), setOpenCluster(null)), 180);
+    else hoverTimer.current = setTimeout(() => (setHovered(null), setOpenCluster(null)), 360);
   };
   const [sheet, setSheet] = useState<string | null>(null);
   const [openCluster, setOpenCluster] = useState<string | null>(null);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
+  const glide = useRef(0);
+  const glideV = useRef({ x: 0, y: 0 });
+  const sample = useRef({ x: 0, y: 0, t: 0 });
+  useEffect(() => () => cancelAnimationFrame(glide.current), []);
+  const pointerRef = useRef<{ x: number; y: number } | null>(null);
+  const burstRef = useRef<Burst[]>([]);
+  const seenPlay = useRef(0);
+  const toneRef = useRef<SkyTone | null>(null);
+  const levelsRef = useRef<number[]>(BANDS.map(() => 0));
 
   const coarse = useSyncExternalStore(
     (onChange) => {
@@ -129,7 +148,7 @@ export function Sky({
   );
   const portrait = size.h > size.w * 1.1;
   const compact = size.w < 720;
-  const pad = portrait ? { l: 36, r: 28, t: 168, b: 200 } : { l: compact ? 64 : 104, r: compact ? 40 : 150, t: 172, b: 176 };
+  const pad = portrait ? { l: 28, r: 16, t: compact ? 268 : 220, b: 210 } : { l: compact ? 64 : 104, r: compact ? 36 : 150, t: compact ? 220 : 198, b: 176 };
   const areaW = Math.max(0, size.w - pad.l - pad.r);
   const areaH = Math.max(0, size.h - pad.t - pad.b);
   const scale = compact ? 0.62 : 1;
@@ -175,11 +194,20 @@ export function Sky({
     }
     return laid;
   }, [inRange, now, portrait, t, pad.l, pad.t, areaW, areaH, scale, officialOnly, openCluster, compact, size.w, size.h]);
+  const bodiesRef = useRef(bodies);
 
   const isVisible = useCallback(
     (b: (typeof bodies)[number]) => b.lit && (b.e.selected || showDust) && (!officialOnly || b.official),
     [showDust, officialOnly],
   );
+
+  const levels = BANDS.map((_, band) => {
+    let sum = 0;
+    for (const body of bodies) {
+      if (body.e.band === band && body.e.selected && body.lit && isVisible(body)) sum += body.heat;
+    }
+    return sum;
+  });
 
   const q = query.startsWith("/") ? "" : query;
   const ranked = useMemo(
@@ -244,6 +272,8 @@ export function Sky({
       setT(null);
       return;
     }
+    seenPlay.current = start;
+    burstRef.current = [];
     setPlayEnd(now);
     setPlaying(true);
     setT(start);
@@ -253,10 +283,21 @@ export function Sky({
     if (!playing) return;
     let raf = 0;
     const begin = performance.now();
-        const tick = (ts: number) => {
+    const tick = (ts: number) => {
       const p = Math.min(1, (ts - begin) / PLAY_MS);
       if (p < 1) {
-        setT(axisTime(p, playEnd));
+        const next = axisTime(p, playEnd);
+        const prev = seenPlay.current;
+        if (next > prev) {
+          const born = bodiesRef.current.filter((b) => b.e.selected && b.role !== "member" && b.e.first >= prev && b.e.first < next);
+          if (born.length) {
+            const at = performance.now();
+            burstRef.current.push(...born.map((b) => ({ x: b.x, y: b.y, at })));
+            if (burstRef.current.length > 24) burstRef.current.splice(0, burstRef.current.length - 24);
+          }
+          seenPlay.current = next;
+        }
+        setT(next);
         raf = requestAnimationFrame(tick);
       } else {
         setT(null);
@@ -267,16 +308,67 @@ export function Sky({
     return () => cancelAnimationFrame(raf);
   }, [playing, playEnd, setT]);
 
+  const toggleTone = useCallback(() => {
+    if (toneRef.current) {
+      toneRef.current.stop();
+      toneRef.current = null;
+      setToneOn(false);
+      return;
+    }
+    try {
+      const engine = new SkyTone(BANDS.length);
+      toneRef.current = engine;
+      void engine.resume();
+      setToneOn(true);
+    } catch {
+      toneRef.current = null;
+      setToneOn(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!toneOn) return;
+    const id = window.setInterval(() => {
+      const raw = levelsRef.current;
+      const max = Math.max(1e-6, ...raw);
+      toneRef.current?.setBands(raw.map((level) => level / max));
+    }, 160);
+    return () => window.clearInterval(id);
+  }, [toneOn]);
+
+  useEffect(() => () => toneRef.current?.stop(), []);
+
+  const runCommand = (id: string) => {
+    if (id === "lens") setLens((v) => !v);
+    else if (id === "constellation") setShowConstellation((v) => !v);
+    else if (id === "depth") setDepth((v) => !v);
+    else if (id === "tone") toggleTone();
+    else if (id === "play") play();
+    else if (id === "now") {
+      setPlaying(false);
+      setT(null);
+    } else if (id === "edition") router.push("/edition");
+    else if (id === "official") setOfficialOnly((v) => !v);
+    else if (id === "dust") setShowDust((v) => !v);
+    else if (id === "list") router.push("/signals");
+    else if (id === "clips") router.push("/clips");
+    else if (id === "method") router.push("/method");
+    else if (id === "theme") setTheme(resolvedTheme === "dark" ? "light" : "dark");
+  };
   const commands: Command[] = [
-    { cmd: "/回放", hint: "重演最近 72 小时", run: play },
-    { cmd: "/现在", hint: "回到当前时间", run: () => (setPlaying(false), setT(null)) },
-    { cmd: "/日报", hint: "放映今天的日报", run: () => router.push("/edition") },
-    { cmd: "/一手", hint: officialOnly ? "显示全部来源" : "只看有一手信源的事件", run: () => setOfficialOnly((v) => !v) },
-    { cmd: "/尘埃", hint: showDust ? "隐藏未入选的资料" : "显示未入选的资料", run: () => setShowDust((v) => !v) },
-    { cmd: "/列表", hint: "切换到文字列表视图", run: () => router.push("/signals") },
-    { cmd: "/收藏", hint: "打开收藏", run: () => router.push("/clips") },
-    { cmd: "/方法", hint: "它是怎么工作的", run: () => router.push("/method") },
-    { cmd: resolvedTheme === "dark" ? "/浅色" : "/深色", hint: "切换外观", run: () => setTheme(resolvedTheme === "dark" ? "light" : "dark") },
+    { id: "lens", cmd: "/透镜", hint: lens ? "关闭引力井" : "用引力井收起尘埃" },
+    { id: "constellation", cmd: "/星座", hint: showConstellation ? "收起分类连线" : "把每类最亮的星连起来" },
+    { id: "depth", cmd: "/景深", hint: depth ? "关掉景深，星回到同一平面" : "热的事件浮近，指针带出视差" },
+    { id: "tone", cmd: "/声景", hint: toneOn ? "关掉分类共振的声音" : "按分类共振发出一组轻音" },
+    { id: "play", cmd: "/回放", hint: "重演最近 72 小时" },
+    { id: "now", cmd: "/现在", hint: "回到当前时间" },
+    { id: "edition", cmd: "/日报", hint: "放映今天的日报" },
+    { id: "official", cmd: "/一手", hint: officialOnly ? "显示全部来源" : "只看有一手信源的事件" },
+    { id: "dust", cmd: "/尘埃", hint: showDust ? "隐藏未入选的资料" : "显示未入选的资料" },
+    { id: "list", cmd: "/列表", hint: "切换到文字列表视图" },
+    { id: "clips", cmd: "/收藏", hint: "打开收藏" },
+    { id: "method", cmd: "/方法", hint: "它是怎么工作的" },
+    { id: "theme", cmd: resolvedTheme === "dark" ? "/浅色" : "/深色", hint: "切换外观" },
   ];
   const cmdMatches = query.startsWith("/") ? commands.filter((c) => c.cmd.startsWith(query.trim()) || query.trim() === "/") : [];
   const results = query.startsWith("/") ? [] : query ? ranked.slice(0, 5) : [];
@@ -286,7 +378,7 @@ export function Sky({
     if (query.startsWith("/")) {
       const c = cmdMatches[Math.min(cursor, cmdMatches.length - 1)];
       if (c) {
-        c.run();
+        runCommand(c.id);
         setQuery("");
       }
       return;
@@ -322,6 +414,7 @@ export function Sky({
         requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-star="${next.e.id}"]`)?.focus({ preventScroll: true }));
         if (view.k > 1) setView((v) => ({ ...v, x: size.w / 2 - next.x * v.k, y: size.h / 2 - next.y * v.k }));
       } else if (ev.key === "Escape") {
+        setSheet(null);
         setHovered(null);
         setOpenCluster(null);
         (document.activeElement as HTMLElement | null)?.blur();
@@ -428,6 +521,104 @@ export function Sky({
   }, [hoveredBody, bodies, isVisible]);
   const hoursAgo = Math.round((now - t) / 3600_000);
   const ticks = compact ? [72, 24, 6, 0] : [72, 48, 24, 12, 6, 0];
+  const skyLine = useMemo(
+    () =>
+      showConstellation
+        ? constellationOf(
+            bodies
+              .filter((b) => b.role !== "member" && isVisible(b) && b.e.selected && matches(b.e, q))
+              .map((b) => ({ id: b.e.id, x: b.x, y: b.y, band: b.e.band, heat: b.heat, label: b.e.categoryLabel, title: b.e.title })),
+          )
+        : [],
+    [showConstellation, bodies, isVisible, q],
+  );
+  const wakes = useMemo(() => {
+    const pool = bodies.filter((b) => b.role !== "member" && b.lit && b.e.selected && b.heat > 0 && isVisible(b) && matches(b.e, q));
+    const cap = Math.max(1, ...pool.map((b) => b.heat));
+    return [...pool]
+      .sort((a, b) => b.heat - a.heat)
+      .slice(0, compact ? 8 : 14)
+      .map((b) => ({ x: b.x, y: b.y, heat: b.heat / cap }));
+  }, [bodies, isVisible, q, compact]);
+  const beam = pinned !== null && size.w > 0 ? (portrait ? pad.t + axisU(t, now) * areaH : pad.l + axisU(t, now) * areaW) : null;
+  const stageStars: StageStar[] = [];
+  for (const b of bodies) {
+    if (b.role === "member" && b.clusterId !== openCluster) continue;
+    const visible = isVisible(b);
+    const match = !q || matches(b.e, q);
+    const star = b.e.selected;
+    const apart = Boolean(openCluster && b.clusterId !== openCluster);
+    const alpha = !visible ? 0 : !match ? 0.08 : star ? (0.78 + (b.e.score / 100) * 0.22) * (apart ? 0.28 : 1) : 0.25;
+    stageStars.push({
+      id: b.e.id,
+      x: b.x,
+      y: b.y,
+      r: star ? b.r : 2,
+      z: star ? 36 + (b.heat / maxHeat) * 120 : -48,
+      alpha,
+      pick: Boolean(visible && star && match),
+      wake: star && visible && match && b.role !== "member" && b.heat > 0 ? b.heat / maxHeat : 0,
+    });
+  }
+  const wakeKeep = new Set(stageStars.filter((s) => s.wake > 0).sort((a, c) => c.wake - a.wake).slice(0, compact ? 8 : 14).map((s) => s.id));
+  for (const s of stageStars) if (!wakeKeep.has(s.id)) s.wake = 0;
+  const stageScene: StageScene = {
+    width: size.w,
+    height: size.h,
+    portrait,
+    lens,
+    depth,
+    reduced,
+    coarse,
+    hovered,
+    stars: stageStars,
+    constellation: skyLine.map((s) => s.id),
+    links: hoveredBody ? links.map(({ b, strong }) => ({ a: hoveredBody.e.id, b: b.e.id, strong })) : [],
+    beam,
+    view,
+  };
+  const scene: SkyScene = {
+    width: size.w,
+    height: size.h,
+    portrait,
+    lens,
+    reduced,
+    wakes,
+    constellation: skyLine,
+    links: links.map(({ b, strong }) => ({ x1: hoveredBody?.x ?? 0, y1: hoveredBody?.y ?? 0, x2: b.x, y2: b.y, strong })),
+    beam,
+  };
+  useLayoutEffect(() => {
+    bodiesRef.current = bodies;
+    levelsRef.current = levels;
+  }, [bodies, levels]);
+  const pickRef = useRef<(id: string | null) => void>(() => {});
+  useLayoutEffect(() => {
+    pickRef.current = (id: string | null) => {
+      if (pointerType.current === "touch") return;
+      if (hoverTimer.current) clearTimeout(hoverTimer.current);
+      if (id) {
+        setHovered(id);
+        setOpenCluster(bodiesRef.current.find((b) => b.e.id === id)?.clusterId ?? null);
+      } else {
+        hoverTimer.current = setTimeout(() => (setHovered(null), setOpenCluster(null)), 360);
+      }
+    };
+  }, []);
+  const constellationLabel = skyLine.length >= 2 ? `星座 · ${skyLine.map((star) => star.label).join(" · ")}` : null;
+  const trackPointer = (ev: { clientX: number; clientY: number; currentTarget: EventTarget | null }) => {
+    if (!(ev.currentTarget instanceof HTMLElement)) return;
+    const rect = ev.currentTarget.getBoundingClientRect();
+    pointerRef.current = {
+      x: (ev.clientX - rect.left - view.x) / (view.k || 1),
+      y: (ev.clientY - rect.top - view.y) / (view.k || 1),
+    };
+  };
+  const pill = (on: boolean) =>
+    cn(
+      "rounded-full border px-2.5 py-1 text-[11px] backdrop-blur transition-colors",
+      on ? "border-fg bg-fg text-bg" : "border-line bg-surface/80 text-dim hover:text-fg",
+    );
 
   return (
     <>
@@ -451,6 +642,26 @@ export function Sky({
             {officialOnly && " · 仅一手"}
           </p>
           <RefreshControl generatedAt={generatedAt} mode={mode} now={now} />
+          <div className="pointer-events-auto mt-3 flex flex-wrap gap-1.5">
+            <button type="button" aria-pressed={lens} title={reduced ? "系统正在减少动态，引力只保留刻度" : "引力井收的是尘埃。关掉景深后，它才会拉动事件星"} onClick={() => setLens((v) => !v)} className={pill(lens)}>
+              透镜
+            </button>
+            <button type="button" aria-pressed={showConstellation} title="把每个分类里最亮的事件连成一条线" onClick={() => setShowConstellation((v) => !v)} className={pill(showConstellation)}>
+              星座
+            </button>
+            <button type="button" aria-pressed={depth} title={reduced ? "系统正在减少动态，景深只保留远近大小" : "热的事件更近。指针只带出一层很轻的视差"} onClick={() => setDepth((v) => !v)} className={pill(depth)}>
+              景深
+            </button>
+            <button type="button" aria-pressed={toneOn} title="按六个分类的共振发出一组轻音" onClick={toggleTone} className={pill(toneOn)}>
+              {toneOn && <span className="tone-dot mr-1 inline-block size-1.5 rounded-full bg-current" aria-hidden />}
+              声景
+            </button>
+          </div>
+          {constellationLabel && (
+            <p className="pointer-events-none mt-2 max-w-full truncate font-mono text-[10px] tracking-wide text-faint" title={constellationLabel}>
+              {constellationLabel}
+            </p>
+          )}
           {fresh.length > 0 && (
             <button
               type="button"
@@ -489,9 +700,10 @@ export function Sky({
 
         <div
           ref={fieldRef}
-          className={cn("absolute inset-0 touch-none", view.k > 1 ? "cursor-grab" : "cursor-default")}
+          className={cn("absolute inset-0 touch-none", view.k > 1 ? "cursor-grab" : lens ? "cursor-crosshair" : "cursor-default")}
           onDoubleClick={() => setView({ x: 0, y: 0, k: 1 })}
           onPointerDown={(ev) => {
+            trackPointer(ev);
             if (ev.pointerType === "touch") {
               const rect = ev.currentTarget.getBoundingClientRect();
               touches.current.set(ev.pointerId, { x: ev.clientX - rect.left, y: ev.clientY - rect.top });
@@ -501,9 +713,12 @@ export function Sky({
                 return;
               }
             }
+            cancelAnimationFrame(glide.current);
+            sample.current = { x: ev.clientX, y: ev.clientY, t: performance.now() };
             drag.current = { x: ev.clientX, y: ev.clientY, vx: view.x, vy: view.y, moved: false };
           }}
           onPointerMove={(ev) => {
+            trackPointer(ev);
             if (ev.pointerType === "touch" && touches.current.has(ev.pointerId)) {
               const rect = ev.currentTarget.getBoundingClientRect();
               touches.current.set(ev.pointerId, { x: ev.clientX - rect.left, y: ev.clientY - rect.top });
@@ -522,23 +737,48 @@ export function Sky({
             const dy = ev.clientY - d.y;
             if (!d.moved && Math.hypot(dx, dy) < 5) return;
             d.moved = true;
+            const tNow = performance.now();
+            const elapsed = tNow - sample.current.t;
+            if (elapsed > 0 && elapsed < 80) {
+              const vx = ((ev.clientX - sample.current.x) / elapsed) * 16;
+              const vy = ((ev.clientY - sample.current.y) / elapsed) * 16;
+              const speed = Math.hypot(vx, vy);
+              glideV.current = speed > 48 ? { x: (vx / speed) * 48, y: (vy / speed) * 48 } : { x: vx, y: vy };
+            }
+            sample.current = { x: ev.clientX, y: ev.clientY, t: tNow };
             setView((v) => ({ ...v, x: d.vx + dx, y: d.vy + dy }));
           }}
           onPointerUp={(ev) => {
             touches.current.delete(ev.pointerId);
             if (touches.current.size < 2) pinch.current = null;
+            if (ev.pointerType === "touch" && touches.current.size === 0) pointerRef.current = null;
+            const flung = drag.current?.moved && view.k > 1 && !reduced && performance.now() - sample.current.t <= 50;
+            if (flung && Math.hypot(glideV.current.x, glideV.current.y) > 0.6) {
+              const step = () => {
+                glideV.current.x *= 0.9;
+                glideV.current.y *= 0.9;
+                if (Math.hypot(glideV.current.x, glideV.current.y) < 0.3) return;
+                setView((v) => (v.k <= 1 ? v : { ...v, x: v.x + glideV.current.x, y: v.y + glideV.current.y }));
+                glide.current = requestAnimationFrame(step);
+              };
+              glide.current = requestAnimationFrame(step);
+            }
             setTimeout(() => (drag.current = null), 0);
           }}
           onPointerCancel={(ev) => {
             touches.current.delete(ev.pointerId);
             pinch.current = null;
             drag.current = null;
+            pointerRef.current = null;
           }}
           onPointerLeave={(ev) => {
-            if (ev.pointerType !== "touch") drag.current = null;
+            if (ev.pointerType !== "touch") {
+              drag.current = null;
+              pointerRef.current = null;
+            }
           }}
           onClick={(ev) => {
-            if (!drag.current?.moved && !(ev.target as HTMLElement).closest("[data-star]")) {
+            if (!drag.current?.moved && !(ev.target as HTMLElement).closest("[data-star], [data-orbit]")) {
               if (sheet) setSheet(null);
               if (openCluster) setOpenCluster(null);
               setHovered(null);
@@ -548,12 +788,17 @@ export function Sky({
           role="group"
         >
           <div className={cn("absolute inset-0 origin-top-left", playing && "sky-playing")} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
+            {glOk ? (
+              <SkyStage scene={stageScene} pointerRef={pointerRef} burstRef={burstRef} dragRef={drag} onPick={(id) => pickRef.current(id)} onFallback={() => setGlOk(false)} />
+            ) : (
+              <SkyWell scene={scene} pointerRef={pointerRef} burstRef={burstRef} />
+            )}
             {size.w > 0 &&
               ticks.map((h) => {
                 const u = axisU(now - h * 3600_000, now);
                 const pos = portrait ? pad.t + u * areaH : pad.l + u * areaW;
                 return (
-                  <div key={h} aria-hidden className={cn("absolute bg-line/60", portrait ? "h-px" : "w-px")} style={portrait ? { top: pos, left: pad.l - 12, right: pad.r - 12 } : { left: pos, top: pad.t - 24, bottom: pad.b - 24 }}>
+                    <div key={h} aria-hidden className={cn("absolute bg-line/60", portrait ? "h-px" : "w-px")} style={portrait ? { top: pos, left: pad.l - 12, right: pad.r - 12 } : { left: pos, top: pad.t - 24, bottom: pad.b + 16 }}>
                     <span className={cn("absolute font-mono text-[10px] whitespace-nowrap text-faint", portrait ? "right-0 -translate-y-full pb-1" : "bottom-0 left-2")}>
                       {h === 0 ? hm(now) : `-${h}h`}
                     </span>
@@ -576,23 +821,6 @@ export function Sky({
                 );
               })}
 
-            {hoveredBody && links.length > 0 && (
-              <svg aria-hidden className="pointer-events-none absolute inset-0 size-full overflow-visible">
-                {links.map(({ b, strong }) => (
-                  <line
-                    key={b.e.id}
-                    x1={hoveredBody.x}
-                    y1={hoveredBody.y}
-                    x2={b.x}
-                    y2={b.y}
-                    className={cn("link-draw stroke-fg", strong ? "opacity-30" : "opacity-20")}
-                    strokeWidth={1}
-                    strokeDasharray={strong ? undefined : "3 4"}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ))}
-              </svg>
-            )}
             {size.w > 0 &&
               [...bodies]
                 .sort((a, b) => a.heat - b.heat)
@@ -610,9 +838,15 @@ export function Sky({
                   const ring = star ? "0 0 0 1.5px var(--bg)" : "";
                   const bloom = glow ? `0 0 ${glow}px ${glow / 3}px color-mix(in oklab, var(--fg) 28%, transparent)` : "";
                   return (
+                    <Fragment key={b.e.id}>
                     <button
-                      key={b.e.id}
                       data-star={b.e.id}
+                      data-warp=""
+                      data-follow={b.e.id}
+                      data-center="1"
+                      data-x={b.x}
+                      data-y={b.y}
+                      data-r={star ? b.r : 2}
                       type="button"
                       tabIndex={visible && star ? 0 : -1}
                       aria-hidden={!visible || !star}
@@ -649,12 +883,14 @@ export function Sky({
                       }}
                       className={cn(
                         "star absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-fg focus-visible:ring-offset-4 focus-visible:ring-offset-bg",
-                        star ? "bg-fg" : "pointer-events-none bg-dim",
+                        glOk && "star-stage",
+                        glOk ? "bg-transparent" : star ? "bg-fg" : "bg-dim",
+                        !star && "pointer-events-none",
                         recent && !reduced && "star-pulse",
                         star && freshIds.has(b.e.id) && "star-new",
                         !visible && "pointer-events-none",
                         entering && "star-enter",
-                        b.clusterId === openCluster && "z-20",
+                        (b.clusterId === openCluster || hovered === b.e.id) && "z-30",
                       )}
                       style={{
                         left: b.x,
@@ -663,7 +899,7 @@ export function Sky({
                         height: d,
                         opacity,
                         animationDelay: entering ? `${Math.round(b.u * ENTER_MS)}ms` : undefined,
-                        boxShadow: [ring, bloom].filter(Boolean).join(", ") || undefined,
+                        boxShadow: glOk ? undefined : [ring, bloom].filter(Boolean).join(", ") || undefined,
                       }}
                     >
                       {b.count > 1 && b.clusterId !== openCluster && (
@@ -676,6 +912,25 @@ export function Sky({
                         </span>
                       )}
                     </button>
+                    {!coarse && hovered === b.e.id && star && (
+                      <div
+                        data-orbit=""
+                        data-warp=""
+                        data-follow={b.e.id}
+                        data-x={b.x}
+                        data-y={b.y}
+                        data-r={b.r}
+                        className={cn("star-anchor absolute z-30 size-0", glOk && "star-stage")}
+                        style={{ left: b.x, top: b.y }}
+                        onMouseEnter={() => armHover(b.e.id)}
+                        onMouseLeave={() => armHover(null)}
+                        onPointerDown={(ev) => ev.stopPropagation()}
+                        onClick={(ev) => ev.stopPropagation()}
+                      >
+                        <SourceOrbits reports={b.e.reports} reduced={reduced} />
+                      </div>
+                    )}
+                    </Fragment>
                   );
                 })}
 
@@ -686,6 +941,11 @@ export function Sky({
                   <span
                     key={`l-${l.id}`}
                     aria-hidden
+                    data-warp=""
+                    data-follow={l.id}
+                    data-mid="y"
+                    data-x={l.x}
+                    data-y={l.y}
                     className={cn("pointer-events-none absolute -translate-y-1/2 truncate text-xs text-dim", l.left && "text-right")}
                     style={{ left: l.x, top: l.y, width: l.w }}
                   >
@@ -698,11 +958,24 @@ export function Sky({
             <div
               onMouseEnter={() => armHover(hoveredBody.e.id)}
               onMouseLeave={() => armHover(null)}
+              data-tip=""
+              data-follow={hoveredBody.e.id}
               className="absolute z-20 w-64 rounded-2xl border border-line bg-surface/95 p-3 shadow-2xl backdrop-blur"
-              style={{
-                left: Math.min(size.w - 272, Math.max(8, hoveredBody.x * view.k + view.x + 18)),
-                top: Math.min(size.h - 340, Math.max(8, hoveredBody.y * view.k + view.y - 20)),
-              }}
+              style={(() => {
+                const sx = hoveredBody.x * view.k + view.x;
+                const sy = hoveredBody.y * view.k + view.y;
+                const cardW = 256;
+                const cardH = 220;
+                const clear = 148;
+                const placeLeft = sx > size.w * 0.5;
+                let left = placeLeft ? sx - clear - cardW : sx + clear;
+                left = Math.min(size.w - cardW - 8, Math.max(8, left));
+                let top = sy - 36;
+                const coversOrbit = left < sx + clear && left + cardW > sx - clear && top < sy + clear && top + cardH > sy - clear;
+                if (coversOrbit) top = sy > size.h * 0.55 ? sy - clear - cardH : sy + clear;
+                top = Math.min(size.h - cardH - 8, Math.max(8, top));
+                return { left, top };
+              })()}
             >
               <div className="text-[11px] text-faint">
                 {hoveredBody.e.categoryLabel} · {hoveredBody.e.sourceCount} 个来源 ·{" "}
@@ -712,6 +985,15 @@ export function Sky({
               <p className="mt-2 text-[11px] text-faint">
                 共振 {hoveredBody.heat.toFixed(1)} · 点击聚焦 · ← → 切换
               </p>
+              {sourcesOf(hoveredBody.e.reports).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {sourcesOf(hoveredBody.e.reports).slice(0, 5).map((report) => (
+                    <a key={report.source} href={report.url} target="_blank" rel="noreferrer" className="rounded-full border border-line px-2 py-0.5 text-[10px] text-dim hover:text-fg">
+                      {report.source}
+                    </a>
+                  ))}
+                </div>
+              )}
               {hoveredBody.count > 1 && <p className="mt-1 text-[11px] text-faint">同处 {hoveredBody.count} 件事，点其中一个打开</p>}
               {links.length > 0 && <p className="mt-1 text-[11px] text-faint">实线：同一信源报道 · 虚线：同一领域</p>}
             </div>
@@ -774,13 +1056,25 @@ export function Sky({
 
             <div className="relative">
               {(options > 0 || (query && !query.startsWith("/"))) && (
-                <ul className="absolute inset-x-0 bottom-full mb-2 overflow-hidden rounded-2xl border border-line bg-surface/95 p-1.5 shadow-2xl backdrop-blur" role="listbox">
+                <ul
+                  className="absolute inset-x-0 bottom-full mb-2 overflow-hidden rounded-2xl border border-line bg-surface/95 p-1.5 shadow-2xl backdrop-blur"
+                  role="listbox"
+                  onMouseDown={(ev) => {
+                    if ((ev.target as HTMLElement).closest("[data-cmd]")) ev.preventDefault();
+                  }}
+                  onClick={(ev) => {
+                    const id = (ev.target as HTMLElement).closest<HTMLElement>("[data-cmd]")?.dataset.cmd;
+                    if (!id) return;
+                    runCommand(id);
+                    setQuery("");
+                  }}
+                >
                   {query.startsWith("/")
                     ? cmdMatches.map((c, i) => (
                         <li key={c.cmd} role="option" aria-selected={i === cursor}>
                           <button
-                            onMouseDown={(ev) => ev.preventDefault()}
-                            onClick={() => (c.run(), setQuery(""))}
+                            type="button"
+                            data-cmd={c.id}
                             className={cn("flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm", i === cursor ? "bg-raised" : "hover:bg-raised")}
                           >
                             <span className="font-mono">{c.cmd}</span>
