@@ -666,7 +666,7 @@ export function SkyStage({
       }
       for (let i = ring; i < rings.length; i++) rings[i].geo.setDrawRange(0, 0);
 
-      const dustCount = scene.reduced ? 0 : liveLens ? (w < 720 ? 72 : 128) : depthOn ? (w < 720 ? 40 : 72) : 0;
+      const dustCount = scene.reduced ? 0 : liveLens ? (w < 720 ? 48 : 80) : depthOn ? (w < 720 ? 12 : 20) : 0;
       while (dust.length < dustCount) {
         const p: Dust = { x: Math.random() * w, y: Math.random() * h, z: 0, vx: 0, vy: 0 };
         respawn(p, w, h);
@@ -704,8 +704,8 @@ export function SkyStage({
         p.y += p.vy * dt;
         if (p.x < -30 || p.y < -30 || p.x > w + 30 || p.y > h + 30) respawn(p, w, h);
         const drift = depthOn && !liveLens;
-        const x = drift ? p.x - par.x * 34 : p.x;
-        const y = drift ? p.y - par.y * 18 : p.y;
+        const x = drift ? p.x - par.x * 20 : p.x;
+        const y = drift ? p.y - par.y * 10 : p.y;
         park(x, y, 0, w, h, tmp);
         dustPos.setXYZ(i, tmp.x, tmp.y, tmp.z);
       }

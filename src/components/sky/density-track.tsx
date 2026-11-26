@@ -11,8 +11,8 @@ export function DensityTrack({ events, now, t }: { events: SkyEvent[]; now: numb
   const path = useMemo(() => {
     const counts = new Array<number>(BUCKETS).fill(0);
     for (const e of events) {
-      if (!e.selected || e.first > now || now - e.first > 72 * 3600_000) continue;
-      counts[Math.min(BUCKETS - 1, Math.floor(axisU(e.first, now) * BUCKETS))] += 1;
+      if (!e.selected || e.latest > now || now - e.latest > 72 * 3600_000) continue;
+      counts[Math.min(BUCKETS - 1, Math.floor(axisU(e.latest, now) * BUCKETS))] += 1;
     }
     const max = Math.max(1, ...counts);
     const smooth = counts.map((_, i) => (counts[i - 1] ?? 0) * 0.25 + counts[i] * 0.5 + (counts[i + 1] ?? 0) * 0.25);

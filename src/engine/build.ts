@@ -75,11 +75,11 @@ function toEditions(events: StoryEvent[], items: Item[], sources: Source[]): Edi
     });
 }
 
-export function buildStore(mode: Store["mode"], sources: Source[], items: Item[], at = Date.now()): Store {
+export function buildStore(mode: Store["mode"], sources: Source[], items: Item[], at = Date.now(), generatedAt = new Date(at).toISOString()): Store {
   const events = toEvents(items, sources, at).sort((a, b) => b.heat - a.heat || b.score - a.score);
   return {
     mode,
-    generatedAt: new Date(at).toISOString(),
+    generatedAt,
     sources,
     items: [...items].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)),
     events,

@@ -25,6 +25,8 @@ export interface SkyEvent {
   status: StoryEvent["status"];
   sourceCount: number;
   first: number;
+  /** 最近一次报道。星的横轴位置用它，这样后加入的来源不会把整件事推出 72 小时窗口。 */
+  latest: number;
   reports: SkyReport[];
 }
 
@@ -73,6 +75,7 @@ export function toSkyEvent(store: Store, e: StoryEvent): SkyEvent {
     status: e.status,
     sourceCount: e.sourceIds.length,
     first: reports[0]?.t ?? Date.parse(e.firstSeenAt),
+    latest: reports[reports.length - 1]?.t ?? Date.parse(e.lastSeenAt),
     reports,
   };
 }

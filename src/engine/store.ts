@@ -22,6 +22,7 @@ export async function getStore(): Promise<Store> {
     console.error("读取存储失败，回退到示范数据", err);
   }
   if (!store?.items.length) store = buildStore("demo", SOURCES, seedItems(SOURCES, now), now);
+  else store = buildStore(store.mode, store.sources.length ? store.sources : SOURCES, store.items, now, store.generatedAt);
   cache = { at: now, store };
   return store;
 }

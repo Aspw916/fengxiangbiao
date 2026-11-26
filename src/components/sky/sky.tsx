@@ -26,8 +26,6 @@ const PLAY_MS = 9000;
 const CLOCK_MS = 15_000;
 const SCRUB_STEPS = 1000;
 const ENTER_MS = 900;
-const LINK_SHARED_MAX = 3;
-const LINK_TOPIC_MAX = 2;
 const MINIMAP_AT = 1.5;
 const MAX_ZOOM = 4;
 const ZOOM_HINT = "⌘/Ctrl + 滚轮、触控板或双指捏合缩放星空；双击复位。键盘：← → 按时间、↑ ↓ 按热度切换事件，回车打开";
@@ -108,9 +106,9 @@ export function Sky({
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
   const [officialOnly, setOfficialOnly] = useState(false);
-  const [showDust, setShowDust] = useState(true);
+  const [showDust, setShowDust] = useState(false);
   const [lens, setLens] = useState(false);
-  const [showConstellation, setShowConstellation] = useState(true);
+  const [showConstellation, setShowConstellation] = useState(false);
   const [depth, setDepth] = useState(true);
   const [glOk, setGlOk] = useState(true);
   const [toneOn, setToneOn] = useState(false);
@@ -122,7 +120,7 @@ export function Sky({
   const armHover = (id: string | null) => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     if (id) setHovered(id);
-    else hoverTimer.current = setTimeout(() => (setHovered(null), setOpenCluster(null)), 360);
+    else hoverTimer.current = setTimeout(() => setHovered(null), 360);
   };
   const [sheet, setSheet] = useState<string | null>(null);
   const [openCluster, setOpenCluster] = useState<string | null>(null);
@@ -152,12 +150,12 @@ export function Sky({
   const areaW = Math.max(0, size.w - pad.l - pad.r);
   const areaH = Math.max(0, size.h - pad.t - pad.b);
   const scale = compact ? 0.62 : 1;
-  const inRange = useMemo(() => events.filter((e) => e.first >= start - 6 * 3600_000), [events, start]);
+  const inRange = useMemo(() => events.filter((e) => e.latest >= start - 6 * 3600_000), [events, start]);
 
   const bodies = useMemo(() => {
     const pitch = Math.max(1, (portrait ? areaW : areaH) / BANDS.length);
     const raw = inRange.map((e) => {
-      const u = axisU(e.first, now);
+      const u = axisU(e.latest, now);
       const v = (e.band + 0.5) / BANDS.length;
       const [nx, ny] = portrait ? [v, u] : [u, v];
       const x = pad.l + nx * areaW;
@@ -221,8 +219,8 @@ export function Sky({
   const fresh = useMemo(
     () =>
       events
-        .filter((e) => e.selected && ((lastVisit !== null && e.first > lastVisit) || !initialIds.has(e.id)))
-        .sort((a, b) => b.first - a.first),
+        .filter((e) => e.selected && ((lastVisit !== null && e.latest > lastVisit) || !initialIds.has(e.id)))
+        .sort((a, b) => b.latest - a.latest),
     [events, lastVisit, initialIds],
   );
   const freshIds = useMemo(() => new Set(fresh.map((e) => e.id)), [fresh]);
@@ -404,7 +402,7 @@ export function Sky({
         if (id) openFocus(id);
       } else if (ev.key.startsWith("Arrow") && ranked.length) {
         ev.preventDefault();
-        const order = ev.key === "ArrowLeft" || ev.key === "ArrowRight" ? [...ranked].sort((a, b) => a.e.first - b.e.first) : ranked;
+        const order = ev.key === "ArrowLeft" || ev.key === "ArrowRight" ? [...ranked].sort((a, b) => a.u - b.u) : ranked;
         const step = ev.key === "ArrowRight" || ev.key === "ArrowDown" ? 1 : -1;
         const at = order.findIndex((b) => b.e.id === hovered);
         const next = order[at < 0 ? (step > 0 ? 0 : order.length - 1) : (at + step + order.length) % order.length];
@@ -503,22 +501,8 @@ export function Sky({
   const focusSlides = focusOrder.map((e) => ({ kind: "event" as const, e }));
   const focusIndex = focusId ? Math.max(0, focusOrder.findIndex((e) => e.id === focusId)) : 0;
   const hoveredBody = bodies.find((b) => b.e.id === hovered);
-  const links = useMemo(() => {
-    if (!hoveredBody?.e.selected) return [];
-    const mine = new Set(hoveredBody.e.reports.map((r) => r.source));
-    const others = bodies.filter((b) => b !== hoveredBody && b.e.selected && isVisible(b));
-    const near = (a: (typeof others)[number], b: (typeof others)[number]) => Math.abs(a.e.first - hoveredBody.e.first) - Math.abs(b.e.first - hoveredBody.e.first);
-    const overlap = (b: (typeof others)[number]) => new Set(b.e.reports.map((r) => r.source).filter((x) => mine.has(x))).size;
-    const shared = others
-      .filter((b) => overlap(b) > 0)
-      .sort((a, b) => overlap(b) - overlap(a) || near(a, b))
-      .slice(0, LINK_SHARED_MAX);
-    const sameTopic = others
-      .filter((b) => b.e.category === hoveredBody.e.category && !shared.includes(b))
-      .sort(near)
-      .slice(0, LINK_TOPIC_MAX);
-    return [...shared.map((b) => ({ b, strong: true })), ...sameTopic.map((b) => ({ b, strong: false }))];
-  }, [hoveredBody, bodies, isVisible]);
+  // 悬停不再往别的事件拉线。同一信源的线会把无关报道连成网；来源已经绕在这颗星自己身上。
+  const links: { b: (typeof bodies)[number]; strong: boolean }[] = [];
   const hoursAgo = Math.round((now - t) / 3600_000);
   const ticks = compact ? [72, 24, 6, 0] : [72, 48, 24, 12, 6, 0];
   const skyLine = useMemo(
@@ -537,7 +521,7 @@ export function Sky({
     const cap = Math.max(1, ...pool.map((b) => b.heat));
     return [...pool]
       .sort((a, b) => b.heat - a.heat)
-      .slice(0, compact ? 8 : 14)
+      .slice(0, compact ? 2 : 3)
       .map((b) => ({ x: b.x, y: b.y, heat: b.heat / cap }));
   }, [bodies, isVisible, q, compact]);
   const beam = pinned !== null && size.w > 0 ? (portrait ? pad.t + axisU(t, now) * areaH : pad.l + axisU(t, now) * areaW) : null;
@@ -560,7 +544,7 @@ export function Sky({
       wake: star && visible && match && b.role !== "member" && b.heat > 0 ? b.heat / maxHeat : 0,
     });
   }
-  const wakeKeep = new Set(stageStars.filter((s) => s.wake > 0).sort((a, c) => c.wake - a.wake).slice(0, compact ? 8 : 14).map((s) => s.id));
+  const wakeKeep = new Set(stageStars.filter((s) => s.wake > 0).sort((a, c) => c.wake - a.wake).slice(0, compact ? 2 : 3).map((s) => s.id));
   for (const s of stageStars) if (!wakeKeep.has(s.id)) s.wake = 0;
   const stageScene: StageScene = {
     width: size.w,
@@ -597,12 +581,8 @@ export function Sky({
     pickRef.current = (id: string | null) => {
       if (pointerType.current === "touch") return;
       if (hoverTimer.current) clearTimeout(hoverTimer.current);
-      if (id) {
-        setHovered(id);
-        setOpenCluster(bodiesRef.current.find((b) => b.e.id === id)?.clusterId ?? null);
-      } else {
-        hoverTimer.current = setTimeout(() => (setHovered(null), setOpenCluster(null)), 360);
-      }
+      if (id) setHovered(id);
+      else hoverTimer.current = setTimeout(() => setHovered(null), 360);
     };
   }, []);
   const constellationLabel = skyLine.length >= 2 ? `星座 · ${skyLine.map((star) => star.label).join(" · ")}` : null;
@@ -834,7 +814,7 @@ export function Sky({
                   const glow = star ? Math.round(6 + (b.e.score / 100) * 26 * (0.4 + b.heat / maxHeat)) : 0;
                   const apart = Boolean(openCluster && b.clusterId !== openCluster);
                   const opacity = !visible ? 0 : !match ? 0.08 : star ? (0.78 + (b.e.score / 100) * 0.22) * (apart ? 0.28 : 1) : 0.25;
-                  const recent = star && t - b.e.first < 6 * 3600_000 && t >= b.e.first;
+                  const recent = star && t - b.e.latest < 6 * 3600_000 && t >= b.e.latest;
                   const ring = star ? "0 0 0 1.5px var(--bg)" : "";
                   const bloom = glow ? `0 0 ${glow}px ${glow / 3}px color-mix(in oklab, var(--fg) 28%, transparent)` : "";
                   return (
@@ -858,13 +838,12 @@ export function Sky({
                       onMouseEnter={() => {
                         if (pointerType.current === "touch") return;
                         armHover(b.e.id);
-                        setOpenCluster(b.clusterId);
                       }}
                       onMouseLeave={() => {
                         if (pointerType.current === "touch") return;
                         armHover(null);
                       }}
-                      onFocus={() => (setHovered(b.e.id), b.clusterId && setOpenCluster(b.clusterId))}
+                      onFocus={() => setHovered(b.e.id)}
                       onBlur={() => setHovered((h) => (h === b.e.id ? null : h))}
                       onPointerDown={(ev) => (pointerType.current = ev.pointerType)}
                       onClick={() => {
@@ -994,8 +973,7 @@ export function Sky({
                   ))}
                 </div>
               )}
-              {hoveredBody.count > 1 && <p className="mt-1 text-[11px] text-faint">同处 {hoveredBody.count} 件事，点其中一个打开</p>}
-              {links.length > 0 && <p className="mt-1 text-[11px] text-faint">实线：同一信源报道 · 虚线：同一领域</p>}
+              {hoveredBody.count > 1 && <p className="mt-1 text-[11px] text-faint">同处 {hoveredBody.count} 件事，点一下展开</p>}
             </div>
           )}
         </div>

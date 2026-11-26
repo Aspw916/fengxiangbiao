@@ -23,6 +23,8 @@ export const HEAT = {
 export const CLUSTER = {
   /** 在多少天内找同一事件的候选。 */
   lookbackDays: 14,
-  /** 标题词元相似度达到多少算同一件事。 */
-  similarity: 0.42,
+  /** 出现次数超过语料这个比例的词不参与判断，避免公司名把不同的事粘在一起。 */
+  commonRate: 0.04,
+  /** 专名最多出现这么多次，再加一个更常见的辨识词，才当作同一件事。 */
+  anchorMaxCount: 6,
 } as const;

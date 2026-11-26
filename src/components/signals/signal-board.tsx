@@ -41,7 +41,25 @@ function Histogram({ rows, floor }: { rows: SignalRow[]; floor: number }) {
   );
 }
 
-function Row({ r, faded }: { r: SignalRow; faded?: boolean }) {
+function groupByEvent(rows: SignalRow[]) {
+  const order: string[] = [];
+  const map = new Map<string, SignalRow[]>();
+  for (const row of rows) {
+    const list = map.get(row.eventId);
+    if (list) list.push(row);
+    else {
+      map.set(row.eventId, [row]);
+      order.push(row.eventId);
+    }
+  }
+  return order.map((id) => {
+    const sorted = [...(map.get(id) ?? [])].sort((a, b) => b.score - a.score);
+    return { lead: sorted[0], rest: sorted.slice(1) };
+  });
+}
+
+function Row({ r, rest = [], faded }: { r: SignalRow; rest?: SignalRow[]; faded?: boolean }) {
+  const names = [...new Set([r.sourceName, ...rest.map((item) => item.sourceName)])];
   return (
     <li className={cn("transition-opacity duration-300", faded && "opacity-50")}>
       <div className="-mx-3 grid grid-cols-[3.25rem_1fr] gap-3 rounded-2xl px-3 py-4 hover:bg-surface">
@@ -50,11 +68,12 @@ function Row({ r, faded }: { r: SignalRow; faded?: boolean }) {
           <span className="block text-[15px] leading-snug font-medium">{r.title}</span>
           {!faded && <span className="mt-1 line-clamp-2 block text-sm leading-6 text-dim">{r.summary}</span>}
           <span className="mt-2 flex flex-wrap items-center gap-x-2 text-xs text-faint">
-            <span className={cn(r.tier === "T1" && "text-dim")}>{r.sourceName}</span>
+            <span className={cn(r.tier === "T1" && "text-dim")}>{names.join(" · ")}</span>
             <span>·</span>
             <span>{r.categoryLabel}</span>
             <span>·</span>
             <span>{r.rel}</span>
+            {rest.length > 0 && <span>同一件事 {rest.length + 1} 篇</span>}
             {r.selected && <span className="ml-1 rounded-full border border-line px-1.5 text-[10px] text-dim">入选</span>}
           </span>
         </Link>
@@ -101,8 +120,10 @@ export function SignalBoard({
     () => rows.filter((r) => (category === "all" || r.category === category) && (tier === "all" || r.tier === tier)),
     [rows, category, tier],
   );
-  const signal = scoped.filter((r) => r.score >= floor);
-  const noise = scoped.filter((r) => r.score < floor);
+  const groups = groupByEvent(scoped);
+  // 以整件事的最高分过线。低于分数线的报道仍跟在同一行，不再单独占一条。
+  const signalGroups = groups.filter(({ lead }) => lead.score >= floor);
+  const noiseGroups = groups.filter(({ lead }) => lead.score < floor);
 
   const pick = (key: string) => {
     setCategory(key);
@@ -127,8 +148,8 @@ export function SignalBoard({
           </div>
           <div className="mt-5 flex items-center justify-between text-sm">
             <span>
-              <span className="font-medium tabular-nums">{signal.length}</span> <span className="text-dim">条信号</span>
-              <span className="text-faint"> · {noise.length} 条折叠</span>
+              <span className="font-medium tabular-nums">{signalGroups.length}</span> <span className="text-dim">件事</span>
+              <span className="text-faint"> · {noiseGroups.length} 件折叠</span>
             </span>
             {floor !== defaultFloor && (
               <button onClick={() => setFloor(defaultFloor)} className="text-xs text-faint hover:text-fg">重置</button>
@@ -163,29 +184,29 @@ export function SignalBoard({
           <p className="py-16 text-center text-sm text-dim">这个分类暂时没有资料。</p>
         ) : (
           <>
-            {signal.length ? (
+            {signalGroups.length ? (
               <ul className="divide-y divide-line">
-                {signal.map((r) => (
-                  <Row key={r.id} r={r} />
+                {signalGroups.map(({ lead, rest }) => (
+                  <Row key={lead.eventId} r={lead} rest={rest} />
                 ))}
               </ul>
             ) : (
               <p className="py-12 text-center text-sm text-dim">分数线太高，没有资料能通过。把滑杆往左拖一点。</p>
             )}
-            {noise.length > 0 && (
+            {noiseGroups.length > 0 && (
               <div className="mt-6">
                 <button
                   onClick={() => setShowNoise((v) => !v)}
                   className="flex h-10 w-full items-center justify-center gap-1.5 rounded-full border border-line text-sm text-dim hover:text-fg"
                   aria-expanded={showNoise}
                 >
-                  {showNoise ? "收起" : "展开"}被折叠的 {noise.length} 条
+                  {showNoise ? "收起" : "展开"}被折叠的 {noiseGroups.length} 件事
                   <ChevronDown className={cn("size-4 transition-transform", showNoise && "rotate-180")} />
                 </button>
                 {showNoise && (
                   <ul className="mt-2 divide-y divide-line">
-                    {noise.map((r) => (
-                      <Row key={r.id} r={r} faded />
+                    {noiseGroups.map(({ lead, rest }) => (
+                      <Row key={lead.eventId} r={lead} rest={rest} faded />
                     ))}
                   </ul>
                 )}
